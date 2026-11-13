@@ -1,7 +1,7 @@
 // Mode 3: Captains Mode against a greedy bot that uses the same model.
 import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, dbar, hname, tone, plural, gradeMark, gradeLegend, DRAFT_WORD } from './ui.js';
 import { estimate, rankCandidates, judge, gradeGap, gradeDraft, RULE_DRAFT, RULE_TEXT } from './model.js';
-import { plays, positionsOf } from './positions.js';
+import { plays, positionsOf, assignPositions } from './positions.js';
 import { compositionBlock } from './result.js';
 
 // Captains Mode draft order for patch 7.41 (F = team with the first pick, S = second pick).
@@ -38,8 +38,8 @@ export function mount(root, ds) {
       h('h3', { text: 'Выбери сторону драфта' }),
       h('ul', { class: 'facts-list' },
         h('li', { text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага.' }),
-        h('li', { text: 'Пикай и бань любых героев: каждый пик сравнивается с лучшим из всех доступных.' }),
-        h('li', { text: 'Бот пикает и банит жадно по той же модели и закрывает свои позиции 1-5.' })),
+        h('li', { text: 'Пикай и бань любых героев. Каждый пик сравнивается с лучшим доступным героем на позициях, которые твоя команда ещё не закрыла.' }),
+        h('li', { text: 'Бот пикает и банит по той же модели и закрывает свои позиции 1-5. Бот: это модель, не реальный игрок.' })),
       h('div', { class: 'side-btns' },
         h('button', { class: 'btn primary big', type: 'button', onclick: () => start('F'), text: 'Первый пик' }),
         h('button', { class: 'btn big', type: 'button', onclick: () => start('S'), text: 'Второй пик' })),
@@ -114,12 +114,27 @@ export function mount(root, ds) {
       wasMine = mine;
     }
 
-    // slot a pick fills: the first open slot the hero plays (hand-made table), else the first
-    // open slot. For the user this only places the portrait; it never limits or judges the pick.
+    // slot a pick fills: the first open slot the hero plays (positions data or hand list), else the
+    // first open slot. Used for the bot.
     function targetPos(t, heroId) {
       const op = open(t);
       const fit = positionsOf(ds.hero(heroId)).find((p) => op.includes(p));
       return fit || op[0];
+    }
+
+    // The user's positions: the best one-to-one assignment of all his picks so far (positions.js
+    // assignPositions, by shares). It only places portraits and defines which positions are still
+    // open for the "best" comparison; it never limits the user's pick.
+    function reassignMine() {
+      const map = assignPositions(st.me.picks.map((x) => ds.hero(x.id)));
+      for (const x of st.me.picks) x.pos = map.get(x.id);
+    }
+    // Best candidates for the user's next pick: heroes that play at least one position his team
+    // has not filled yet (all available heroes if none does).
+    function bestPool(av) {
+      const op = open(st.me);
+      const c = av.filter((x) => op.some((p) => plays(x, p)));
+      return c.length ? c : av;
     }
 
     function apply(side, id, pos) {
@@ -133,14 +148,15 @@ export function mount(root, ds) {
       const cur = curStep();
       if (!cur || cur[0] !== st.userSide) return;
       if (cur[1] === 'pick') {
-        const pos = targetPos(st.me, id);
         const av = available();
-        // compared with the best of ALL available heroes, whatever their positions
-        const ranked = rankCandidates(ds, ids(st.me), ids(st.bot), av.map((x) => x.id));
+        // compared with the best available hero for a position the team has not filled yet;
+        // the user's own pick may be any hero (judge() never counts a better pick as worse)
+        const ranked = rankCandidates(ds, ids(st.me), ids(st.bot), bestPool(av).map((x) => x.id));
         const mine = ranked.find((r) => r.id === id) || { id, est: estimate(ds, [...ids(st.me), id], ids(st.bot)) };
         const j = judge(mine.est.p, ranked[0].est.p);
-        st.log.push({ id, pos, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, j });
-        apply(st.userSide, id, pos);
+        st.log.push({ id, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, j });
+        apply(st.userSide, id, 0);
+        reassignMine();
       } else apply(st.userSide, id);
       advance();
     }

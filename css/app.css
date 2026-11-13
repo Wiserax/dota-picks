@@ -601,7 +601,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; margin: 0; font-size: 13px; }
 .facts dt, .facts dd { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .facts dt { color: var(--muted); padding-right: 12px; }
-.facts dd { margin: 0; font-weight: 600; }
+.facts dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .plain { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); }
 .plain li { margin: 5px 0; }
 .steps { list-style: none; margin: 0; padding: 0; counter-reset: st; }
@@ -707,3 +707,21 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- v10: last pick slot toggle, draft source, real match block, neutral notes ---------- */
+.enemy-why { margin-top: 1px; font-size: 10.5px; line-height: 1.25; color: var(--dim); }
+.slot-toggle { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 4px; align-items: center; margin: 2px 0 8px; }
+.slot-toggle .st-label { font-size: 12px; font-weight: 700; color: var(--muted); padding-right: 2px; }
+.slot-toggle .seg-btn { min-height: 36px; font-size: 12.5px; }
+.draft-src { margin: 0 0 6px; font-size: 12px; line-height: 1.35; color: var(--muted); }
+.draft-src p { margin: 0; overflow-wrap: anywhere; }
+.draft-src a { color: var(--gold-2); text-decoration: underline; text-underline-offset: 2px; }
+.draft-src .draft-src-sub { font-size: 11px; color: var(--dim); }
+.draft-src.gen p { color: var(--amber); }
+.pos-off { margin: 2px 0 6px; text-align: center; font-size: 12px; color: var(--muted); }
+.panel.real-match { border-style: dashed; }
+.real-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: center; margin: 8px 0 0; font-size: 13.5px; }
+.real-res, .real-fit { margin: 8px 0 0; font-size: 13.5px; }
+.real-res.won b { color: var(--pos-2); }
+.real-res.lost b { color: var(--neg-2); }
+.real-fit b { color: var(--g, var(--text)); }

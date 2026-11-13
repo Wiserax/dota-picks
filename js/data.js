@@ -132,6 +132,39 @@ export async function loadBracket(meta, id) {
   return new Dataset(meta, br, info);
 }
 
+// Optional files: null when missing or malformed (the caller falls back), never an error screen.
+async function getJsonOptional(file) {
+  try {
+    const res = await fetch(BASE + file, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// site/data/positions.json (see positions.js). null when missing.
+export async function loadPositions() {
+  const j = await getJsonOptional('positions.json');
+  return j && j.heroes && typeof j.heroes === 'object' ? j : null;
+}
+
+// site/data/drafts-<bracket id>.json: real matches from held-out days for the last pick mode.
+// { bracket, source, days, count, matches: [[match_id, start_time, [5 radiant], [5 dire], radiant_win], ...] }
+// Cached per bracket for the page session. null when missing or empty.
+const draftsCache = new Map();
+export function loadDrafts(bracketId) {
+  if (!draftsCache.has(bracketId)) {
+    draftsCache.set(bracketId, getJsonOptional('drafts-' + bracketId + '.json').then((j) => {
+      if (!j || !Array.isArray(j.matches)) return null;
+      const matches = j.matches.filter((m) => Array.isArray(m) && m.length >= 5 && Array.isArray(m[2]) && Array.isArray(m[3])
+        && m[2].length === 5 && m[3].length === 5);
+      return matches.length ? { ...j, matches } : null;
+    }));
+  }
+  return draftsCache.get(bracketId);
+}
+
 export function defaultBracketId(meta) {
   const legend = meta.brackets.find((b) => /legend/i.test(b.label || '') || b.id === 'legend');
   return (legend || meta.brackets[0]).id;

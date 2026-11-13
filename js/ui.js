@@ -1,6 +1,6 @@
 // Small DOM helpers and shared widgets. All text goes through textContent (data is data).
 import { wilson, calibRange, outOfRange } from './model.js';
-import { positionsOf, aliasesOf, POS_NAMES, POS_NOTE, posLabel } from './positions.js';
+import { positionsOf, aliasesOf, POS_NAMES, posLabel, posLabelLine, hasPositionData } from './positions.js';
 
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -70,7 +70,7 @@ export function provLine(ds) {
   return h('div', { class: 'prov', text: provenance(ds) });
 }
 
-export const posNote = () => h('p', { class: 'pos-note', text: POS_NOTE });
+export const posNote = () => h('p', { class: 'pos-note', text: posLabelLine() });
 
 // Diverging bar around a midline (0 or 50%). v and scale in the same unit (percent points).
 export function dbar(v, scale, cls = '') {
@@ -147,7 +147,8 @@ export function heroMatches(hero, q) {
 
 const TABS = [['all', 'Все', ''], [1, '1', 'керри'], [2, '2', 'мид'], [3, '3', 'офф'], [4, '4', 'четв.'], [5, '5', 'пят.']];
 const ATTRS = [['', 'Все', 'Все'], ['str', 'Сила', 'Сил'], ['agi', 'Ловкость', 'Лов'], ['int', 'Интеллект', 'Инт'], ['all', 'Универсал', 'Унив']];
-export const PICKER_POS_NOTE = 'позиции: ручная разметка, не статистика';
+// Label near the position tabs: positions.json label_ru, or the hand-list label on fallback.
+export const pickerPosNote = () => (hasPositionData() ? posLabelLine() : 'позиции: ручная разметка, не статистика');
 
 // Hero picker over ALL heroes: search (English, Russian, slang), attribute filter, optional
 // position tabs (a filter only, never a restriction), big tiles, optional sticky confirm bar.
@@ -250,7 +251,7 @@ export function heroGrid(ds, opts) {
   search.addEventListener('input', () => { query = search.value; apply(); });
   const el = h('section', { class: 'picker' },
     h('div', { class: 'picker-bar' + (opts.head ? ' with-head' : '') }, opts.head || null, search),
-    h('div', { class: 'filters' }, h('div', { class: 'filter-row' }, attrsEl, tabsEl), h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })),
+    h('div', { class: 'filters' }, h('div', { class: 'filter-row' }, attrsEl, tabsEl), h('p', { class: 'tabs-note', text: pickerPosNote() })),
     grid, empty, bar);
   setTab(tab);
   refresh();

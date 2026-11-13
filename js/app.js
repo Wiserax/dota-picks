@@ -1,4 +1,5 @@
-import { FIXTURE, DataError, loadMeta, loadBracket, defaultBracketId } from './data.js';
+import { FIXTURE, DataError, loadMeta, loadBracket, defaultBracketId, loadPositions } from './data.js';
+import { setPositionData } from './positions.js';
 import { h, clear, nfmt, provenance, portrait, sourceShort, fdate } from './ui.js';
 import * as oneVone from './mode-1v1.js';
 import * as lastPick from './mode-last.js';
@@ -143,6 +144,8 @@ async function boot() {
     showError(e);
     return;
   }
+  // positions from data when the file exists, the hand list otherwise (positions.js)
+  setPositionData(await loadPositions());
   for (const b of meta.brackets) {
     select.append(h('option', { value: b.id, text: b.label || b.id }));
   }

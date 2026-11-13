@@ -63,6 +63,8 @@ export function mount(root, ds) {
       h('div', { class: 'enemy-info' },
         h('div', { class: 'enemy-top' }, h('span', { class: 'enemy-tag', text: 'Враг' }), hname(enemy, 'enemy-name')),
         h('div', { class: 'enemy-stat' }, 'выигрывает ', h('b', { text: pct1(enemy.w / enemy.n) }), ' ', chip(ds, enemy.n)),
+        // quiz.js sampleEnemy: weighted by games in the bracket (pick rate in the patch window)
+        h('div', { class: 'enemy-why', text: 'враг выбран по частоте пиков в патче' }),
         h('div', { class: 'timer', role: 'timer', 'aria-label': 'осталось секунд' }, h('div', { class: 'timer-track' }, bar), secs)));
     grid = heroGrid(ds, {
       tab: 'all',

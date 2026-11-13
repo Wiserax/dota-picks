@@ -4,11 +4,15 @@
 // common pub usage. Strict: a hero keeps a position only if it is a common, normal pub
 // pick there (no niche or occasional flex), so most heroes have 1 or 2 positions and each
 // position has roughly 30-36 heroes. First listed = main position. Keyed by short name.
+// Since v10 the site prefers site/data/positions.json (see setPositionData below); this table is
+// the fallback when that file is missing and the source of the Russian aliases in every case.
 
 export const POS_NOTE = 'позиции: ручная разметка, не статистика; статистики по позициям в данных нет';
 
 export const POS_NAMES = { 1: 'керри', 2: 'мид', 3: 'оффлейн', 4: 'семи-саппорт', 5: 'фулл-саппорт' };
 export const posLabel = (p) => 'позиция ' + p + ', ' + POS_NAMES[p];
+// "по данным не мидер", "Лучший керри был ..." (last pick slots are 1 or 2)
+export const ROLE_PERSON = { 1: 'керри', 2: 'мидер', 3: 'оффлейнер', 4: 'семи-саппорт', 5: 'фулл-саппорт' };
 
 // short name: positions | aliases (space separated; use _ inside one alias)
 const TABLE = `
@@ -160,8 +164,52 @@ function fallback(hero) {
   return { pos, aliases: [] };
 }
 
+// ---------- positions from data (site/data/positions.json), hand list as the fallback ----------
+// positions.json: { source, label_ru, window, matches, method, min_share,
+//   heroes: { "<id>": { n, shares: [s1..s5], pos: [playable positions, best first], fallback } } }
+// When the file is present, a hero plays a position if it is in heroes[id].pos. A hero missing
+// from the file (or the whole file missing) keeps the hand list above. Aliases always come from the table.
+let DATA = null;
+export const MIN_SHARE_DEFAULT = 0.15;
+// Hand-list weights of the listed positions (best first), used only when the data has no shares.
+const HAND_W = [0.6, 0.3, 0.1];
+
+export function setPositionData(json) {
+  DATA = json && json.heroes && typeof json.heroes === 'object' ? json : null;
+}
+export const hasPositionData = () => !!DATA;
+export const positionSource = () => (DATA ? DATA.source || 'data' : 'hand');
+export const minShare = () => (DATA && typeof DATA.min_share === 'number' ? DATA.min_share : MIN_SHARE_DEFAULT);
+export const positionData = () => DATA;
+
+// The one-line label shown near the picker tabs and in "О данных": the file's own label, or the hand-list label.
+export function posLabelLine() {
+  return DATA && DATA.label_ru ? String(DATA.label_ru) : POS_NOTE;
+}
+
+function dataEntry(hero) {
+  if (!DATA || !hero) return null;
+  const e = DATA.heroes[String(hero.id)];
+  return e && Array.isArray(e.pos) && e.pos.length ? e : null;
+}
+
 export function positionsOf(hero) {
+  const e = dataEntry(hero);
+  if (e) return e.pos.map(Number);
   return (MAP.get(hero.short) || fallback(hero)).pos;
+}
+
+// Share of the hero's games at positions 1..5 (array of 5). From the data when present,
+// otherwise a hand-list stand-in (listed positions only, best first weighted more).
+export function sharesOf(hero) {
+  const e = DATA && hero ? DATA.heroes[String(hero.id)] : null;
+  if (e && Array.isArray(e.shares) && e.shares.length === 5) return e.shares.map((x) => Number(x) || 0);
+  const pos = (MAP.get(hero.short) || fallback(hero)).pos;
+  const s = [0, 0, 0, 0, 0];
+  const w = HAND_W.slice(0, pos.length);
+  const tot = w.reduce((a, b) => a + b, 0);
+  pos.forEach((p, i) => { s[p - 1] = w[i] / tot; });
+  return s;
 }
 
 export function aliasesOf(hero) {
@@ -170,6 +218,34 @@ export function aliasesOf(hero) {
 
 export function plays(hero, p) {
   return positionsOf(hero).includes(p);
+}
+
+// Best one-to-one assignment of heroes to positions: maximises the product of shares over all
+// injective maps (for 5 heroes and 5 positions: the 120 permutations). A zero share gets a small
+// floor so an assignment always exists. Returns Map(hero id -> position).
+export const SHARE_FLOOR = 0.005;
+export function assignPositions(heroes, positions = [1, 2, 3, 4, 5]) {
+  const L = heroes.map((hero) => sharesOf(hero).map((s) => Math.log(Math.max(s, SHARE_FLOOR))));
+  let best = -Infinity;
+  let bestMap = null;
+  const cur = [];
+  const usedP = new Set();
+  const rec = (i, acc) => {
+    if (i === heroes.length) {
+      if (acc > best + 1e-12) { best = acc; bestMap = [...cur]; }
+      return;
+    }
+    for (const p of positions) {
+      if (usedP.has(p)) continue;
+      usedP.add(p); cur.push(p);
+      rec(i + 1, acc + L[i][p - 1]);
+      cur.pop(); usedP.delete(p);
+    }
+  };
+  rec(0, 0);
+  const out = new Map();
+  if (bestMap) heroes.forEach((hero, i) => out.set(hero.id, bestMap[i]));
+  return out;
 }
 
 export function tableSize() { return MAP.size; }

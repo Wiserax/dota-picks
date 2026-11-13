@@ -76,3 +76,36 @@ Raw pair win rate = w / n, Wilson 95%:
   z = 1.96; p = w / n; d = 1 + z*z/n
   center = (p + z*z/(2n)) / d; half = z*sqrt(p(1-p)/n + z*z/(4n*n)) / d
 ```
+
+## positions.json
+
+Hero positions 1-5 from data (`pipeline/positions.py`).
+
+```
+{
+  "source": "opendota_pro",                     // or "hand_audited" if the data were ever unusable
+  "label_ru": "по матчам про- и лиг-сцены OpenDota, патч 7.41, 9109 матчей",
+  "window": {"from": "2026-03-24", "to": "2026-11-12"},   // UTC dates of the first and last match
+  "matches": 9109,
+  "method": "<plain text: the exact rule>",
+  "min_share": 0.15,
+  "heroes": {"<hero id>": {"n": games, "shares": [s1, s2, s3, s4, s5], "pos": [playable positions, best first], "fallback": false}}
+}
+```
+
+- Source: professional and league matches only (pub matches have no per-player data). Patch 7.41, all letters.
+- `pos`: share at least `min_share` AND at least 20 games at that position, sorted by share. Never empty.
+- `fallback: true`: under 60 games; `pos` is then the hand list from `site/js/positions.js` and `shares` are the few real games.
+
+## drafts-<bracket id>.json
+
+Real matches for the last-pick mode (`pipeline/drafts.py`).
+
+```
+{"bracket": "b3", "source": "OpenDota public matches", "days": ["2026-11-11", "2026-11-12"], "count": N,
+ "matches": [[match_id, start_time_unix, [5 radiant hero ids], [5 dire hero ids], radiant_win 0 or 1], ...]}
+```
+
+- Same filters as the statistics; only the held-out days, which are in no pair table.
+- Hero order inside a team is the order OpenDota stores; it says nothing about positions.
+- Sorted by match_id; each file under 250 KB.
