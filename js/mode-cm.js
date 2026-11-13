@@ -2,6 +2,7 @@
 import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp } from './ui.js';
 import { estimate, rankCandidates, judge } from './model.js';
 import { plays, positionsOf } from './positions.js';
+import { compositionBlock } from './result.js';
 
 // Captains Mode draft order for patch 7.41 (F = team with the first pick, S = second pick).
 // Source: Valve's official patch notes (dota2.com datafeed, read 2026-11-13).
@@ -192,8 +193,16 @@ export function mount(root, ds) {
     const keyWith = est.terms.filter((t) => t.kind === 'with' && t.pair.flag !== 2).sort(byAbs).slice(0, 4);
     const thin = est.terms.filter((t) => t.kind !== 'base' && t.pair.flag === 2);
     const top = keyVs[0];
+    // strongest helping synergy on each side (non-thin), so synergies are visible in the why line
+    const bestSyn = (side) => est.terms.filter((t) => t.kind === 'with' && t.side === side && t.pair.flag !== 2 && t.pair.adv > 0).sort((a, b) => b.pair.adv - a.pair.adv)[0];
+    const synMe = bestSyn('X');
+    const synBot = bestSyn('Y');
+    const synName = (t) => ds.hero(t.heroes[0]).name + ' + ' + ds.hero(t.heroes[1]).name;
+    const synText = synMe || synBot
+      ? '; лучшая связка ' + [synMe ? 'у тебя: ' + synName(synMe) : null, synBot ? 'у бота: ' + synName(synBot) : null].filter(Boolean).join(', ')
+      : '';
     const why = 'Почему: ' + (parts[0].v >= 0 ? parts[0].pos : parts[0].neg)
-      + (top ? '; самая важная пара: ' + ds.hero(top.heroes[0]).name + ' против ' + ds.hero(top.heroes[1]).name : '') + '.';
+      + (top ? '; самая важная пара: ' + ds.hero(top.heroes[0]).name + ' против ' + ds.hero(top.heroes[1]).name : '') + synText + '.';
     const pickWins = st.log.filter((l) => l.j.win).length;
     const again = h('button', { class: 'btn primary big next', type: 'button', text: 'Новый драфт', onclick: setup });
     const finalTeam = (label, t, cls) => h('div', { class: 'team ' + cls }, h('div', { class: 'team-label', text: label }),
@@ -220,6 +229,7 @@ export function mount(root, ds) {
         keyVs.length ? keyVs.map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' })),
       h('section', { class: 'panel why' }, h('h3', { text: 'Связки' }),
         keyWith.length ? keyWith.map((t) => sideTag(t, pairRow(ds, t))) : h('p', { class: 'muted small', text: 'Нет связок с достаточным числом игр.' })),
+      compositionBlock(ds, [{ label: 'Ты', ids: me }, { label: 'Бот', ids: bot }]),
       h('section', { class: 'panel' }, h('h3', { text: 'Сила героев в брекете' }),
         h('div', { class: 'base-grid' }, [...me, ...bot].map((id) => baseRow(ds, ds.hero(id))))),
       h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },

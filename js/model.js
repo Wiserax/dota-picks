@@ -87,6 +87,37 @@ export function estimatePair(ds, X, Y) {
   return { z, se, p: pr, lo: sigmoid(z - Z95 * se), hi: sigmoid(z + Z95 * se), terms, X: [x], Y: [y] };
 }
 
+// Last pick: FIT of hero h to the draft, statistics only, hero base strength NOT included.
+// fit (log-odds) = b * sum of shrunk matchup advantages of h against the final enemies
+//                + c * sum of shrunk synergies of h with the allies   (b, c: the bracket's model)
+// Shown as (sigmoid(x) - 0.5) * 100: total, the enemy part and the ally part separately.
+// Thin pairs keep their shrunk (near zero) value, as in the full model, but are never named as reasons.
+export const fitPct = (z) => (sigmoid(z) - 0.5) * 100;
+export function draftFit(ds, id, allies, enemies) {
+  const { b, c } = ds.model;
+  const terms = [];
+  let zVs = 0, zWith = 0;
+  for (const e of enemies) {
+    const p = ds.vsPair(id, e);
+    if (!p) continue;
+    const t = { kind: 'vs', side: 'XY', heroes: [id, e], pair: p, contrib: b * p.adv };
+    zVs += t.contrib; terms.push(t);
+  }
+  for (const a of allies) {
+    const p = ds.withPair(id, a);
+    if (!p) continue;
+    const t = { kind: 'with', side: 'X', heroes: [id, a], pair: p, contrib: c * p.adv };
+    zWith += t.contrib; terms.push(t);
+  }
+  const z = zVs + zWith;
+  for (const t of terms) t.pp = fitPct(z) - fitPct(z - t.contrib);
+  const pct = fitPct(z);
+  return { z, pct, shown: Math.round(pct) || 0, vsPct: fitPct(zVs), withPct: fitPct(zWith), terms };
+}
+export const FIT_WIN = 2;
+export const RULE_LAST = 'Правило: ПОБЕДА, если вклад твоего героя в драфт +' + FIT_WIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Сила самих героев в патче сюда не входит.';
+export const fitWins = (f) => f.shown >= FIT_WIN;
+
 // Evaluate every available candidate for X's next slot. Returns sorted best first.
 export function rankCandidates(ds, X, Y, available, fn = estimate) {
   const out = [];

@@ -4,13 +4,18 @@
 // model, internal realism); if you took that hero, he takes his next best. Your best pick
 // is the available hero (any position) that maximizes your chance after the enemy's
 // response, so denying counts.
-import { h, clear, fill, portrait, heroGrid, pct, outcome, countUp } from './ui.js';
-import { estimate, rankCandidates, judge } from './model.js';
+// Verdict (owner, 2026-11-13): FIT to the draft, statistics only (model.js draftFit): your hero's
+// matchups against the 5 final enemies plus synergies with the 4 allies, hero strength removed.
+// The full draft chance is shown as info only. The composition block is explanation only.
+import { h, clear, fill, portrait, heroGrid, pct, range, outcome, pairRow, provLine } from './ui.js';
+import { estimate, rankCandidates, draftFit, fitWins, RULE_LAST } from './model.js';
 import { plays } from './positions.js';
-import { whyLine } from './explain.js';
-import { bestLineText, duel, reasonsBlock, altList, moreBlock, scoreLine } from './result.js';
+import { fitWhy } from './explain.js';
+import { scoreLine, compositionBlock } from './result.js';
 
 const score = { win: 0, loss: 0 };
+const signed = (x) => (x > 0 ? '+' : x < 0 ? '-' : '') + Math.abs(x) + '%';
+const signed1 = (x) => { const v = Math.round(x * 10) / 10 || 0; return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; };
 
 function sampleTeam(ds, positions, used, rng = Math.random) {
   const team = [];
@@ -95,39 +100,64 @@ export function mount(root, ds) {
     const wanted = enemyRank[0].id;
     const nextE = enemyRank[1] ? enemyRank[1].id : wanted;
     const response = (hid) => (hid === wanted ? nextE : wanted);
-    const evalPick = (hid) => ({ id: hid, est: estimate(ds, [...ally4, hid], [...enemy4, response(hid)]) });
-    const ranked = free.map((x) => evalPick(x.id)).sort((a, b) => b.est.p - a.est.p);
+    // verdict and ranking: FIT to the draft after the enemy's response (no hero strength)
+    const evalPick = (hid) => ({ id: hid, fit: draftFit(ds, hid, ally4, [...enemy4, response(hid)]) });
+    const ranked = free.map((x) => evalPick(x.id)).sort((a, b) => b.fit.z - a.fit.z);
+    ranked.forEach((c, i) => { c.rank = i + 1; });
     const best = ranked[0];
     const user = ranked.find((c) => c.id === userId) || evalPick(userId);
-    const j = judge(user.est.p, best.est.p);
-    if (j.win) score.win++; else score.loss++;
+    const win = fitWins(user.fit);
+    const isBest = user.fit.shown === best.fit.shown;
+    if (win) score.win++; else score.loss++;
     drawScore();
     const enemyLast = response(userId);
+    // full draft chance: info only, never the verdict
+    const chance = estimate(ds, [...ally4, userId], [...enemy4, enemyLast]);
     const denyDrop = Math.round((enemyRank[0].est.p - (enemyRank[1] ? enemyRank[1].est.p : enemyRank[0].est.p)) * 100);
     const denyLine = userId === wanted
       ? 'Враг хотел ' + ds.hero(wanted).name + ': ты его забрал, он взял ' + ds.hero(nextE).name + ' (его шанс ' + (denyDrop >= 1 ? '-' + denyDrop + '%' : 'меньше на долю процента') + ').'
       : 'Враг взял ' + ds.hero(wanted).name + ', как и хотел.';
-    const why = whyLine(ds, user, best, { nearBest: j.nearBest, wantedId: wanted, nextId: nextE });
+    const why = fitWhy(ds, user, best, { win, isBest, wantedId: wanted, nextId: nextE });
+    const bestLine = (isBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(best.id).name + ': ' + signed(best.fit.shown) + '.') + ' Твой вклад: ' + signed(user.fit.shown) + '.';
     const next = h('button', { class: 'btn primary big next', type: 'button', text: 'Следующий раунд', onclick: round });
+    const pairs = (c) => c.fit.terms.filter((t) => t.pair.flag !== 2).sort((a, b) => Math.abs(b.contrib) - Math.abs(a.contrib)).slice(0, 4);
+    const pairsBlock = (c, title) => h('div', { class: 'reason' }, h('h4', { text: title }),
+      pairs(c).length ? pairs(c).map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' }));
+    const top = ranked.slice(0, 5);
+    const fitRow = (c, cls = '') => h('li', { class: (c.id === userId ? 'me ' : '') + (fitWins(c.fit) ? 'w' : 'l') + cls },
+      h('span', { class: 'six-n', text: String(c.rank) }), portrait(ds.hero(c.id), 'xs'),
+      h('span', { class: 'six-name' }, ds.hero(c.id).name, c.id === userId ? h('small', { text: ' твой выбор' }) : null),
+      h('span', { class: 'six-p' }, h('b', { text: signed1(c.fit.pct) }),
+        h('small', { text: 'враги ' + signed1(c.fit.vsPct) + ' · союзники ' + signed1(c.fit.withPct) + (c.id === wanted ? ' · нужен врагу' : '') })),
+      h('span', { class: 'six-wl', text: fitWins(c.fit) ? 'W' : 'L' }));
     const el = h('section', { class: 'result' },
       board(st, { userId, enemyLast, reveal: true }),
       h('div', { class: 'after-reveal' },
         h('p', { class: 'deny-line' + (userId === wanted ? ' denied' : ''), text: denyLine }),
-        outcome({ win: j.win, bestLine: bestLineText(ds, j, best.id, user.id), why }),
-        duel(ds, user, best, { label: 'шанс команды' }),
+        outcome({ win, bestLine, why, rule: RULE_LAST }),
+        h('div', { class: 'fit-card' },
+          h('div', { class: 'fit-main' }, 'вклад в драфт: ', h('b', { text: signed(user.fit.shown) })),
+          h('div', { class: 'fit-split' },
+            h('span', null, 'против врагов: ', h('b', { text: signed1(user.fit.vsPct) })),
+            h('span', null, 'с союзниками: ', h('b', { text: signed1(user.fit.withPct) }))),
+          h('div', { class: 'fit-chance muted small', text: 'шанс драфта: ' + pct(chance.p) + ' (с учётом силы героев)' })),
         h('div', { class: 'next-wrap' }, next),
         h('section', { class: 'panel why' }, h('h3', { text: 'Что решило' }),
-          reasonsBlock(ds, user, 'Твой пик: ' + ds.hero(user.id).name),
-          best.id !== user.id ? reasonsBlock(ds, best, 'Лучший: ' + ds.hero(best.id).name) : null),
-        h('section', { class: 'panel alts' }, h('h3', { text: 'Лучшие варианты' }),
-          h('p', { class: 'muted small', text: 'Шанс команды с учётом ответного пика врага.' }),
-          altList(ds, ranked, userId)),
-        moreBlock(ds, { user, best, ranked, extra: [
-          h('p', { text: 'Враг выбирал по видимым 4 на 4: ' + enemyRank.slice(0, 3).map((r) => ds.hero(r.id).name + ' ' + pct(r.est.p)).join(', ') + ' (его шанс).' }),
-        ] })));
+          pairsBlock(user, 'Твой пик: ' + ds.hero(user.id).name),
+          best.id !== user.id ? pairsBlock(best, 'Лучший: ' + ds.hero(best.id).name) : null),
+        h('section', { class: 'panel alts' }, h('h3', { text: 'Лучшие по вкладу в драфт' }),
+          h('p', { class: 'muted small', text: 'Вклад: матчапы против пяти врагов (с его ответным пиком) плюс связки с четырьмя союзниками. Сила самих героев убрана.' }),
+          h('p', { class: 'rank-line' }, 'Твой выбор: ', h('b', { text: 'место ' + user.rank + ' из ' + ranked.length })),
+          h('ol', { class: 'six' }, top.map((c) => fitRow(c)), top.some((c) => c.id === userId) ? null : fitRow(user, ' rank-gap'))),
+        compositionBlock(ds, [{ label: 'Твоя команда', ids: [...ally4, userId] }], { before: ally4, pickId: userId }),
+        h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
+          h('p', { text: 'Вклад в драфт = b × сумма матчапов против врагов + c × сумма связок с союзниками, в лог-шансах; b = ' + ds.model.b.toFixed(3).replace('.', ',') + ', c = ' + ds.model.c.toFixed(3).replace('.', ',') + ' (веса модели брекета). Пары с малым числом игр сжаты почти к нулю и не называются причиной.' }),
+          h('p', { text: 'Шанс драфта с твоим пиком: ' + pct(chance.p) + ', 95% интервал ' + range(chance.lo, chance.hi) + '. Это справка, на вердикт не влияет.' }),
+          h('p', { text: 'Враг выбирал по видимым 4 на 4 полной моделью: ' + enemyRank.slice(0, 3).map((r) => ds.hero(r.id).name + ' ' + pct(r.est.p)).join(', ') + ' (его шанс).' }),
+          user.fit.terms.filter((t) => t.pair.flag !== 2).map((t) => pairRow(ds, t, { detail: true })),
+          provLine(ds)))));
     clear(stage).append(el);
     window.scrollTo({ top: 0 });
-    setTimeout(() => countUp(el), 1000);
   }
 
   drawScore();

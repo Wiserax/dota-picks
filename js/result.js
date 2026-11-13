@@ -1,6 +1,48 @@
 // Shared pieces of the result screens (plain language first, details collapsed).
 import { h, pct, range, nfmt, portrait, pairRow, baseRow, rangeNote, provLine } from './ui.js';
 import { decidingPairs, thinPairs, gapNoise } from './model.js';
+import { composition, rolesFromMeta, CHECKS } from './composition.js';
+
+// ---------- composition block (role tags, NOT statistics; never part of a verdict) ----------
+const rolesOf = (ds) => ds._roles || (ds._roles = rolesFromMeta(ds.meta));
+const NAMES_MAX = 3;
+
+function cell(ds, side, key, max = NAMES_MAX) {
+  const ids = side.heroes[key];
+  const names = ids.slice(0, max).map((id) => ds.hero(id).name).join(', ') + (ids.length > max ? ' +' + (ids.length - max) : '');
+  return h('div', { class: 'comp-cell ' + (ids.length ? 'yes' : 'no') }, h('b', { text: ids.length ? 'да' : 'нет' }), ids.length ? h('small', { text: names }) : null);
+}
+
+// teams: [{ label, ids }] (1 or 2 teams). before: ids of the first team before the user's pick (last pick).
+export function compositionBlock(ds, teams, { before = null, pickId = null } = {}) {
+  const comp = composition(teams[0].ids, teams[1] ? teams[1].ids : [], rolesOf(ds));
+  const sides = teams.length > 1 ? [comp.a, comp.b] : [comp.a];
+  const max = sides.length > 1 ? 2 : NAMES_MAX;
+  const rows = CHECKS.filter((c) => c.key !== 'melee' && c.key !== 'ranged')
+    .map((c) => h('div', { class: 'comp-row' }, h('span', { class: 'comp-label', text: c.label }), sides.map((s) => cell(ds, s, c.key, max))));
+  // melee and ranged as one row: yes when the team has both
+  rows.push(h('div', { class: 'comp-row' }, h('span', { class: 'comp-label', text: 'ближний и дальний бой' }), sides.map((s) => {
+    const both = s.counts.melee && s.counts.ranged;
+    return h('div', { class: 'comp-cell ' + (both ? 'yes' : 'no') }, h('b', { text: both ? 'да' : 'нет' }), h('small', { text: 'ближних ' + s.counts.melee + ', дальних ' + s.counts.ranged }));
+  })));
+  const lines = [];
+  if (before && pickId != null) {
+    const pre = composition(before, [], rolesOf(ds)).a;
+    const added = CHECKS.filter((c) => !pre.counts[c.key] && comp.a.counts[c.key]);
+    if (added.length) lines.push('До твоего пика не было ' + added.slice(0, 2).map((c) => c.gen).join(' и ') + ', теперь есть: ' + ds.hero(pickId).name + '.');
+  }
+  for (const [i, s] of sides.entries()) {
+    const missing = CHECKS.filter((c) => !s.counts[c.key]);
+    if (missing.length) lines.push((sides.length > 1 ? teams[i].label + ': нет ' : 'В драфте нет ') + missing.slice(0, 2).map((c) => c.gen).join(' и ') + '.');
+  }
+  if (!lines.length) lines.push(sides.length > 1 ? 'У обеих команд есть все роли из списка.' : 'В драфте есть все роли из списка.');
+  return h('section', { class: 'panel comp' + (sides.length > 1 ? ' two' : '') },
+    h('h3', { text: 'Состав драфта (по ролям героев, не статистика)' }),
+    sides.length > 1 ? h('div', { class: 'comp-row comp-head' }, h('span'), teams.map((t) => h('span', { class: 'comp-team', text: t.label }))) : null,
+    h('div', { class: 'comp-grid' }, rows),
+    lines.slice(0, 2).map((t) => h('p', { class: 'comp-line', text: t })),
+    h('p', { class: 'muted small', text: 'Роли героев от Valve и тип атаки из справочника OpenDota. Только пояснение: на вердикт не влияет.' }));
+}
 
 export function bestLineText(ds, j, bestId, userId) {
   if (userId != null && (j.nearBest || userId === bestId)) return 'Лучший пик!';

@@ -17,6 +17,33 @@ function topPair(ds, c, good) {
   return ps[0] ? { s: c.id, t: pairText(ds, ps[0], c.id, good), w: Math.abs(ps[0].contrib) } : null;
 }
 
+// Last pick (fit to the draft): the real reasons from the data, both kinds, non-thin pairs only.
+// c: { id, fit } where fit = draftFit(...). Returns e.g. "хорошо стоит против Sniper и Lina, сильная связка с Magnus".
+const EPS = 0.005;
+function fitReasons(ds, c, good) {
+  const ps = c.fit.terms.filter((t) => t.pair.flag !== 2 && (good ? t.contrib > EPS : t.contrib < -EPS))
+    .sort((a, b) => (good ? b.contrib - a.contrib : a.contrib - b.contrib));
+  const vs = ps.filter((t) => t.kind === 'vs').slice(0, 2).map((t) => ds.hero(otherOf(t, c.id)).name);
+  const wi = ps.filter((t) => t.kind === 'with').slice(0, 1).map((t) => ds.hero(otherOf(t, c.id)).name);
+  const parts = [];
+  if (vs.length) parts.push((good ? 'хорошо стоит против ' : 'плохо стоит против ') + vs.join(' и '));
+  if (wi.length) parts.push((good ? 'сильная связка с ' : 'слабая связка с ') + wi[0]);
+  return parts.join(', ');
+}
+
+export function fitWhy(ds, user, best, { win, isBest, wantedId = null, nextId = null }) {
+  const name = (id) => ds.hero(id).name;
+  const deny = wantedId != null && best.id === wantedId && user.id !== best.id
+    ? name(best.id) + ' хотел взять враг: забрав его, ты оставил бы ему ' + name(nextId) + '. ' : '';
+  const mine = fitReasons(ds, user, win || isBest);
+  const bestGood = fitReasons(ds, best, true);
+  if (isBest || (win && !deny)) {
+    return 'Почему: ' + name(user.id) + ' ' + (mine || 'без сильных минусов против этих врагов и с этими союзниками') + '.';
+  }
+  const userPart = mine ? name(user.id) + ' ' + mine : name(user.id) + ' почти ничего не даёт против этих врагов и с этими союзниками';
+  return 'Почему: ' + deny + userPart + (bestGood ? '; ' + name(best.id) + ' ' + bestGood : '') + '.';
+}
+
 // user, best: { id, est } (user may be null on timeout). nearBest: the user's pick counts as best.
 export function whyLine(ds, user, best, { nearBest = false, wantedId = null, nextId = null } = {}) {
   const name = (id) => ds.hero(id).name;
