@@ -62,8 +62,9 @@ export function mount(root, ds) {
   function round() {
     if (grid) grid.destroy();
     clear(stage);
-    const u = 1 + Math.floor(Math.random() * 5);
-    const e = 1 + Math.floor(Math.random() * 5);
+    // Alex 2026-11-13: the last pick is always the carry or the mid, never a support.
+    const u = 1 + Math.floor(Math.random() * 2);
+    const e = 1 + Math.floor(Math.random() * 2);
     const used = new Set();
     const allies = sampleTeam(ds, [1, 2, 3, 4, 5].filter((p) => p !== u), used);
     const enemies = sampleTeam(ds, [1, 2, 3, 4, 5].filter((p) => p !== e), used);
