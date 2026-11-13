@@ -1,0 +1,105 @@
+// "О данных": filters, method, held-out calibration, limits, credits.
+import { h, nfmt, fdate, pct, provLine, calibText } from './ui.js';
+import { WIN_GAP_PP, CALIB_MIN_N } from './model.js';
+
+// RND.md section 5, in Russian.
+const NEVER = [
+  'Что пик выигрывает или проигрывает игру. Он сдвигает шансы на несколько процентов; модели по одному драфту угадывают исход в 55-60% матчей, а навык игры на герое важнее (69,9% у Yang et al. 2016).',
+  'Любое число без числа игр, патча, брекета, источника и даты.',
+  'Контрпик или синергию по паре, где игр меньше порога или которая не прошла проверку на ложные открытия.',
+  'Что-либо о позициях, линиях или ролях. В данных их нет.',
+  'Что-либо отдельно об Immortal или о про-сцене. Брекет: пабы Divine+Immortal.',
+  'Эффект последнего пика или порядка пиков. В пабах порядок пиков неизвестен, измерить его нельзя.',
+  'Что тренажёр знает тебя: твой навык, твой пул героев, слаженность твоей команды.',
+  'Шанс победы точнее, чем позволяет калибровка. Только целые проценты и интервал.',
+  'Что другие патчи ведут себя так же. С каждым балансным патчем данные начинаются заново.',
+];
+
+export function mount(root, ds) {
+  const meta = ds.meta;
+  const m = ds.model;
+  const ho = m.holdout;
+  const filters = Array.isArray(meta.filters) ? meta.filters
+    : typeof meta.filters === 'string' ? meta.filters.split(/;\s*/)
+      : meta.filters && typeof meta.filters === 'object' ? Object.entries(meta.filters).map(([k, v]) => k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v))
+        : [];
+  const win = meta.window || {};
+
+  root.append(
+    h('section', { class: 'mode-head' }, h('h2', { text: 'О данных' })),
+    h('section', { class: 'panel about' },
+      h('h3', { text: 'Откуда числа' }),
+      h('dl', { class: 'facts' },
+        fact('Источник', meta.source || 'OpenDota'),
+        fact('Патч', ds.patch + (meta.patch_start ? ', с ' + fdate(meta.patch_start) : '')),
+        fact('Окно данных', (win.from ? fdate(win.from) : '?') + ' - ' + (win.to ? fdate(win.to) : '?')),
+        fact('Загружено', fdate(meta.fetched_at)),
+        fact('Брекет', ds.bracketLabel + ', ' + nfmt(ds.matches) + ' матчей'),
+        fact('Порог "мало данных"', 'меньше ' + nfmt(ds.minGames) + ' игр на пару')),
+      h('h4', { text: 'Фильтры' }),
+      h('ul', { class: 'plain' }, filters.map((f) => h('li', { text: f }))),
+      h('h4', { text: 'Все брекеты' }),
+      h('ul', { class: 'plain' }, meta.brackets.map((b) => h('li', { text: (b.label || b.id) + ': ' + (b.matches != null ? nfmt(b.matches) + ' матчей' : 'нет данных') })))),
+    h('section', { class: 'panel about' },
+      h('h3', { text: 'Как считается' }),
+      h('ol', { class: 'plain num' },
+        h('li', { text: 'Берём только текущий патч, рейтинговый All Pick и выбранный брекет.' }),
+        h('li', { text: 'Для каждого героя считаем его винрейт в брекете. Для каждой пары считаем, насколько она выигрывает чаще, чем ожидалось бы по силе этих двух героев. Это преимущество, а не сырой винрейт: сильный герой не выглядит контрпиком всех подряд.' }),
+        h('li', { text: 'Пары с малым числом игр сжимаются к нулю: чем меньше игр, тем меньше пара двигает оценку. Под порогом пара серая, с пометкой "мало данных", и никогда не называется причиной вердикта.' }),
+        h('li', { text: 'Из 16 тысяч пар сотни выглядели бы значимыми по чистой случайности. Поэтому "подтверждено" ставится только парам, прошедшим поправку Benjamini-Hochberg на 10%. Остальные помечены "не доказано".' }),
+        h('li', { text: 'Оценка драфта: сила героев плюс 25 матчапов плюс по 10 связок в каждой команде, с тремя весами. Веса подобраны на отложенных матчах, которых не было в таблицах пар; так убирается двойной счёт.' }),
+        h('li', { text: 'Интервал рядом с оценкой показывает только шум выборки, не ошибку самой модели.' }),
+        h('li', { text: 'Вердикт "Победа": оценка выше 50%, весь интервал выше 50%, и в режимах 1 на 1 и Последний пик пик не дальше ' + WIN_GAP_PP + ' п.п. от лучшего доступного. Если интервал задевает 50%, вердикт "слишком близко". Остальное: "Поражение". Случайности в вердикте нет.' })),
+      h('p', { class: 'muted small' }, 'Веса модели: a ' + fmt(m.a) + ', b ' + fmt(m.fittedB) + ', c ' + fmt(m.fittedC) + '; сжатие k: матчапы ' + nfmt(Math.round(m.kVs)) + ', связки ' + nfmt(Math.round(m.kWith)) + ' игр.'),
+      ds.pairsBeatHeroOnly === false
+        ? h('p', { class: 'warn', text: 'В этом брекете пары не улучшили прогноз на отложенных матчах. Поэтому оценка использует только силу героев, а пары показаны для справки.' })
+        : null),
+    h('section', { class: 'panel about' },
+      h('h3', { text: 'Проверка на отложенных матчах' }),
+      ho ? holdout(ds, ho) : h('p', { class: 'warn', text: 'Для этого брекета нет проверки на отложенных матчах.' }),
+      h('p', { class: 'ceiling' }, h('b', { text: 'Потолок: 55-60%. ' }), 'Опубликованные модели, которые видят только драфт, угадывают победителя пабов в 55-60% матчей (Yang et al. 2016: 60,1%; Hodge et al. 2017: 58,8%). Драфт даёт небольшое преимущество, а не результат.')),
+    h('section', { class: 'panel about' },
+      h('h3', { text: 'Чего тренажёр никогда не утверждает' }),
+      h('ol', { class: 'plain num' }, NEVER.map((t) => h('li', { text: t })))),
+    h('section', { class: 'panel about credits' },
+      h('h3', { text: 'Авторы данных' }),
+      h('p', null, 'Данные матчей: ', h('a', { href: 'https://www.opendota.com', target: '_blank', rel: 'noopener', text: 'OpenDota' }), ' (публичные матчи). Портреты героев: CDN Valve.'),
+      h('p', { text: 'Dota 2 является товарным знаком Valve Corporation. Этот сайт не связан с Valve и не одобрен ею.' }),
+      h('p', { class: 'muted small', text: 'Без аналитики, трекеров и звука.' }),
+      provLine(ds)));
+  return () => {};
+}
+
+function fact(k, v) {
+  return [h('dt', { text: k }), h('dd', { text: v })];
+}
+
+function fmt(x) { return typeof x === 'number' ? x.toFixed(3).replace('.', ',') : '?'; }
+
+function holdout(ds, ho) {
+  const rows = Array.isArray(ho.calibration) ? ho.calibration : [];
+  return h('div', null,
+    h('p', null, 'День ', h('b', { text: ho.day ? String(ho.day) : '?' }), ', ', h('b', { text: nfmt(ho.matches || 0) }), ' матчей, не использованных для таблиц пар.'),
+    h('div', { class: 'table-wrap' }, h('table', { class: 'tbl' },
+      h('thead', null, h('tr', null, h('th', { text: 'Модель' }), h('th', { text: 'Точность' }), h('th', { text: 'Log loss' }))),
+      h('tbody', null,
+        h('tr', null, h('td', { text: 'герои + пары' }), h('td', { text: ho.accuracy != null ? pct1x(ho.accuracy) : '?' }), h('td', { text: ho.logloss != null ? ho.logloss.toFixed(4).replace('.', ',') : '?' })),
+        h('tr', null, h('td', { text: 'только герои' }), h('td', { text: ho.hero_only_accuracy != null ? pct1x(ho.hero_only_accuracy) : '?' }), h('td', { text: ho.hero_only_logloss != null ? ho.hero_only_logloss.toFixed(4).replace('.', ',') : '?' })))),
+    ),
+    h('h4', { text: 'Калибровка: когда модель давала фавориту X%, он выигрывал' }),
+    rows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'tbl calib' },
+      h('thead', null, h('tr', null, h('th', { text: 'Оценка' }), h('th', { text: 'В среднем' }), h('th', { text: 'Выиграли' }), h('th', { text: 'Матчей' }))),
+      h('tbody', null, rows.map((r) => h('tr', null,
+        h('td', { text: edge(r.lo) + '-' + edge(r.hi) + '%' }),
+        h('td', { text: pct(r.predicted) }),
+        h('td', { class: Math.abs(r.actual - r.predicted) > 0.03 ? 'off' : '' , text: pct(r.actual) }),
+        h('td', { text: nfmt(r.n) })))))) : h('p', { class: 'muted', text: 'Таблицы калибровки нет.' }),
+    h('p', { class: 'muted small', text: 'Точность 50% означает угадывание монеткой. Красным отмечены строки, где факт расходится с оценкой больше чем на 3 п.п.' }),
+    h('p', { class: 'range-about', text: calibText(ds)
+      ? 'Проверенный диапазон: ' + calibText(ds) + ' (корзины, где не меньше ' + CALIB_MIN_N + ' матчей; у последней открытой корзины граница взята по её средней оценке). Оценку вне этого диапазона сайт показывает с пометкой "модель здесь не проверена": реальные матчи такого перекоса почти не дают, это экстраполяция.'
+      : 'Для этого брекета нет корзин калибровки хотя бы с ' + CALIB_MIN_N + ' матчами, поэтому ни одна оценка не проверена на реальных матчах.' }));
+}
+
+function edge(x) { return String(Math.round(x * 1000) / 10).replace('.', ','); }
+
+function pct1x(p) { return (p * 100).toFixed(1).replace('.', ',') + '%'; }

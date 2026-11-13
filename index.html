@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="description" content="Тренажёр пиков Dota 2: каждый вердикт со статистикой, патч, брекет, число игр и источник.">
+  <title>Тренажёр пиков Dota 2</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23171c22'/%3E%3Cpath d='M8 24 L16 6 L24 24 Z' fill='none' stroke='%23c8a35a' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="fixture-banner" hidden></div>
+  <header class="top">
+    <div class="top-row">
+      <a class="brand" href="#/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text"><b>PICK</b> TRAINER</span>
+      </a>
+      <label class="bracket">
+        <span class="sr">Брекет</span>
+        <select id="bracket-select" aria-label="Брекет"></select>
+      </label>
+    </div>
+    <nav class="tabs" id="tabs">
+      <a href="#/1v1" data-route="1v1">1 на 1</a>
+      <a href="#/last" data-route="last">Последний пик</a>
+      <a href="#/cm" data-route="cm">Captains Mode</a>
+      <a href="#/about" data-route="about">О данных</a>
+    </nav>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <footer class="foot" id="foot"></footer>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
