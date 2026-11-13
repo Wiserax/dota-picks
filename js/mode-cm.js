@@ -228,7 +228,7 @@ export function mount(root, ds) {
           portrait(ds.hero(l.id), 'xs'),
           h('span', { class: 'c-name' }, hname(ds.hero(l.id)),
             h('small', { class: 'c-tag ' + (l.id === l.bestId || l.j.nearBest ? 't-ok' : 't-stat'), text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })),
-          h('span', { class: 'c-val' }, h('b', { class: tone(Math.round(l.est.p * 100) - 50), text: pct(l.est.p) }), dbar((l.est.p - 0.5) * 100, 15)),
+          h('span', { class: 'c-val' }, h('b', { class: tone(l.j.u - 50), text: l.j.u + '%' }), dbar((l.est.p - 0.5) * 100, 15)),
           h('span', { class: 'c-wl', text: l.j.win ? 'W' : 'L' })))),
         h('p', { class: 'muted small', text: 'Шанс на момент пика, по уже выбранным героям. Будущие пики модель не знает.' })),
       h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Ключевые матчапы' })),

@@ -130,7 +130,7 @@ export function mount(root, ds) {
       h('span', { class: 'c-name' }, hname(ds.hero(c.id)), c.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
         c.id === wanted ? h('small', { class: 'c-tag t-bad', text: 'нужен врагу' }) : null,
         h('span', { class: 'c-split' }, 'враги ', h('b', { text: signed1(c.fit.vsPct) }), ' · союзники ', h('b', { text: signed1(c.fit.withPct) }))),
-      h('span', { class: 'c-val' }, h('b', { class: tone(c.fit.pct), text: signed1(c.fit.pct) }), dbar(c.fit.pct, SCALE)),
+      h('span', { class: 'c-val' }, h('b', { class: tone(c.fit.shown), text: signed(c.fit.shown) }), dbar(c.fit.pct, SCALE)),
       h('span', { class: 'c-wl', text: fitWins(c.fit) ? 'W' : 'L' }));
     const splitRow = (label, v) => h('div', { class: 'split-row' }, h('span', { class: 'split-label', text: label }), dbar(v, SCALE), h('b', { class: tone(v), text: signed1(v) }));
     const el = h('section', { class: 'result' },

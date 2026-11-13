@@ -93,7 +93,7 @@ export function mount(root, ds) {
       portrait(hero, 'xs'),
       h('span', { class: 'c-name' }, hname(hero), m.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
         h('small', { class: 'c-tag t-' + (m.thin ? 'thin' : m.flag === 1 ? (m.adv >= 0 ? 'ok' : 'bad') : 'stat'), text: tagOf(m) })),
-      h('span', { class: 'c-val' }, h('b', { class: m.thin ? 'zero' : tone(m.pct), text: m.thin ? '-' : signed1(m.pct) }), m.thin ? null : dbar(m.pct, SCALE)),
+      h('span', { class: 'c-val' }, h('b', { class: m.thin ? 'zero' : tone(m.shown), text: m.thin ? '-' : signed(m.shown) }), m.thin ? null : dbar(m.pct, SCALE)),
       h('span', { class: 'c-facts' }, m.n ? h('span', { text: pct1(m.wins / m.n) }) : null, h('small', { text: m.n ? gamesOf(m.n) : 'нет игр' })),
       h('span', { class: 'c-wl', text: win ? 'W' : 'L' }));
   }

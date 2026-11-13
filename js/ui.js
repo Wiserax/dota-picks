@@ -250,7 +250,7 @@ export function heroGrid(ds, opts) {
   search.addEventListener('input', () => { query = search.value; apply(); });
   const el = h('section', { class: 'picker' },
     h('div', { class: 'picker-bar' + (opts.head ? ' with-head' : '') }, opts.head || null, search),
-    h('div', { class: 'filters' }, attrsEl, tabsEl, h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })),
+    h('div', { class: 'filters' }, h('div', { class: 'filter-row' }, attrsEl, tabsEl), h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })),
     grid, empty, bar);
   setTab(tab);
   refresh();
