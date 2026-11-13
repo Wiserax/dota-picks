@@ -19,11 +19,11 @@ export function pickResult(ds, { userId, ranked, timeout, onNext, nextLabel = '�
       h('div', { class: 'gap' },
         h('div', { class: 'gap-label', text: 'разница' }),
         h('div', { class: 'gap-val', text: v.gapPP == null ? '-' : isBest ? '0' : pp(v.gapPP, false).replace(' п.п.', '') }),
-        h('div', { class: 'gap-unit', text: 'п.п.' })),
+        h('div', { class: 'gap-unit', text: '%' })),
       estCard(ds, isBest ? 'Это лучший пик' : 'Лучший доступный', bestHero, best.est, 'best')),
     h('p', { class: 'rule' },
-      'Победа: оценка выше 50%, весь 95% интервал выше 50% и пик не дальше ' + WIN_GAP_PP + ' п.п. от лучшего доступного. Пик рядом с лучшим, но интервал задевает 50%: слишком близко. ',
-      user && !isBest && v.diffSePP != null ? 'Шум разницы: ±' + (1.96 * v.diffSePP).toFixed(1).replace('.', ',') + ' п.п.' : ''));
+      'Победа: шанс 50% и выше, или не дальше ' + WIN_GAP_PP + '% от лучшего пика. ',
+      ''));
 
   const why = h('section', { class: 'panel why' }, h('h3', { text: 'Что решило' }));
   if (user) why.append(reasonBlock(ds, user, isBest ? 'Твой пик' : 'Твой пик: ' + userHero.name));

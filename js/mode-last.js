@@ -14,8 +14,7 @@ export function mount(root, ds) {
   function drawScore() {
     fill(scoreEl, 
       h('span', { class: 'sc win' }, h('b', { text: String(score.win) }), ' W'),
-      h('span', { class: 'sc loss' }, h('b', { text: String(score.loss) }), ' L'),
-      score.close ? h('span', { class: 'sc close', title: 'слишком близко' }, h('b', { text: String(score.close) }), ' ?') : null);
+      h('span', { class: 'sc loss' }, h('b', { text: String(score.loss) }), ' L'),);
   }
 
   function teamRow(label, ids, cls, slot) {

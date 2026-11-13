@@ -21,7 +21,6 @@ export function mount(root, ds) {
     fill(scoreEl, 
       h('span', { class: 'sc win', title: 'победы' }, h('b', { text: String(score.win) }), ' W'),
       h('span', { class: 'sc loss', title: 'поражения' }, h('b', { text: String(score.loss) }), ' L'),
-      score.close ? h('span', { class: 'sc close', title: 'слишком близко' }, h('b', { text: String(score.close) }), ' ?') : null,
       h('span', { class: 'sc streak', title: 'серия побед' }, 'серия ', h('b', { text: String(score.streak) })));
   }
 

@@ -165,7 +165,7 @@ export function mount(root, ds) {
             h('span', null, 'сила героев ', h('b', { text: pp(toPP(baseSum)) })),
             h('span', null, 'матчапы ', h('b', { text: pp(toPP(pairSum)) })),
             h('span', null, 'синергии ', h('b', { text: pp(toPP(synSum)) })))),
-        h('p', { class: 'rule', text: 'Победа: оценка выше 50% и весь 95% интервал выше 50%. Интервал задевает 50%: слишком близко. Драфт сдвигает шансы, а не решает игру.' })),
+        h('p', { class: 'rule', text: 'Победа: шанс твоей команды 50% и выше. Драфт сдвигает шансы, а не решает игру.' })),
       h('div', { class: 'draft compact' },
         finalTeam('Ты', st.me.picks, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot.picks, 'enemy')),
       h('div', { class: 'next-wrap' }, again),

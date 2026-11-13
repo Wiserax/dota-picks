@@ -8,7 +8,7 @@ export const Z95 = 1.96;
 
 // Victory threshold in 1v1 and last pick: the pick must be within this many
 // percentage points of the best available pick (and above 50%, interval above 50%).
-export const WIN_GAP_PP = 1;
+export const WIN_GAP_PP = 3;
 
 // 95% Wilson score interval for wins out of n.
 export function wilson(wins, n, z = Z95) {
@@ -131,17 +131,14 @@ export function verdict(user, best, userId, bestId) {
   const covers50 = user.lo <= 0.5 && user.hi >= 0.5;
   const coversGap = !nearBest && gapPP <= Z95 * diffSePP;
   const base = { gapPP, diffSePP, nearBest };
-  if (nearBest && above50) return { ...base, kind: 'win', win: true, note: '' };
-  // RND.md section 4: a pick near the best whose interval covers 50% is too close to call.
-  if (nearBest && covers50) return { ...base, kind: 'close', win: false, close: true, note: 'интервал включает 50%: статистика не различает' };
-  if (nearBest) return { ...base, kind: 'loss', win: false, note: 'даже лучший доступный пик ниже 50%' };
-  return { ...base, kind: 'loss', win: false, note: coversGap ? 'слишком близко, статистика не различает разницу с лучшим пиком' : '' };
+  // Alex 2026-11-13: only win or loss. Win = 50%+ or within WIN_GAP_PP of the best pick.
+  if (user.p >= 0.5 || nearBest) return { ...base, kind: 'win', win: true, note: userId === bestId ? 'это лучший пик' : '' };
+  return { ...base, kind: 'loss', win: false, note: 'шанс ниже 50% и далеко от лучшего пика' };
 }
 
 // Final verdict for a whole draft (Captains Mode): win or loss only when the interval excludes 50%.
 export function draftVerdict(est) {
-  if (est.p > 0.5 && est.lo > 0.5) return { kind: 'win', win: true, note: '' };
-  if (est.lo <= 0.5 && est.hi >= 0.5) return { kind: 'close', win: false, close: true, note: 'интервал включает 50%: статистика не различает' };
+  if (est.p >= 0.5) return { kind: 'win', win: true, note: '' };
   return { kind: 'loss', win: false, note: '' };
 }
 
