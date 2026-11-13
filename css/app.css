@@ -151,13 +151,11 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .prov { margin-top: 10px; font-size: 11px; color: var(--dim); }
 .pos-note { margin: 10px 0; font-size: 11.5px; color: var(--dim); }
 
-.mode-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 2px 0 8px; min-height: 32px; }
-.mode-head h2 { margin: 0; font: 800 21px/1.1 var(--ui); letter-spacing: -0.01em; }
+.mode-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin: 2px 0 8px; min-height: 32px; }
+.mode-head h2 { margin: 0; font: 800 21px/1.1 var(--ui); letter-spacing: -0.01em; white-space: nowrap; }
 .score { display: flex; gap: 6px; font-size: 12px; color: var(--muted); }
 .sc { display: inline-flex; align-items: baseline; gap: 3px; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
 .sc b { font-size: 14px; color: var(--text); }
-.sc.win b { color: var(--pos-2); }
-.sc.loss b { color: var(--neg-2); }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -221,7 +219,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .stat-table { list-style: none; margin: 0; padding: 0; }
 .trow {
   display: grid; align-items: center; column-gap: 8px; row-gap: 2px;
-  grid-template-columns: 22px 40px minmax(0, 1fr) 54px 62px 12px;
+  grid-template-columns: 22px 40px minmax(0, 1fr) 54px 62px 34px;
   grid-template-areas: "n face name val facts wl";
   column-gap: 6px; padding: 8px 0; min-height: 48px; border-bottom: 1px solid var(--line);
 }
@@ -233,9 +231,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .trow .c-val b { font-size: 15px; font-weight: 750; line-height: 1.1; }
 .trow .c-facts { grid-area: facts; display: flex; flex-direction: column; align-items: flex-end; text-align: right; font-size: 12.5px; line-height: 1.25; color: var(--text); }
 .trow .c-facts small, .trow .c-facts .chip { font-size: 11px; color: var(--muted); }
-.trow .c-wl { grid-area: wl; font: 800 12px/1 var(--ui); text-align: center; }
-.trow.w .c-wl { color: var(--pos-2); }
-.trow.l .c-wl { color: var(--neg-2); }
+.trow .c-wl { grid-area: wl; font: 700 10.5px/1 var(--ui); }
 .trow.me { background: linear-gradient(90deg, rgba(216, 178, 106, 0.14), rgba(216, 178, 106, 0.04)); box-shadow: inset 3px 0 0 var(--gold); }
 .trow.rank-gap { margin-top: 10px; border-top: 1px dashed var(--line-2); }
 .c-tag { font-size: 10.5px; font-weight: 600; line-height: 1.25; margin-top: 1px; }
@@ -257,6 +253,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .rank-line b { color: var(--text); }
 @media (max-width: 379px) {
   .trow { grid-template-columns: 22px 40px minmax(0, 1fr) 66px 12px; grid-template-areas: "n face name val wl" "n face name facts wl"; column-gap: 6px; }
+  .gm .gm-t { display: none; }
   .trow .portrait.xs { width: 40px; }
   .thead { grid-template-areas: "n face name val wl"; }
   .thead .c-facts { display: none; }
@@ -311,27 +308,36 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .base-num { display: flex; flex-direction: column; align-items: stretch; gap: 3px; text-align: right; }
 .base-grid { display: grid; column-gap: 20px; }
 
-/* ---------- verdict ---------- */
-.outcome {
-  position: relative; margin: 10px 0; padding: 14px 14px 12px; border-radius: 12px; overflow: hidden;
-  border: 1px solid var(--line-2); background: var(--surface);
-}
-.outcome.win { border-color: rgba(63, 189, 127, 0.55); background: linear-gradient(115deg, rgba(63, 189, 127, 0.22), rgba(63, 189, 127, 0.03) 60%), var(--surface); }
-.outcome.loss { border-color: rgba(229, 87, 76, 0.55); background: linear-gradient(115deg, rgba(229, 87, 76, 0.22), rgba(229, 87, 76, 0.03) 60%), var(--surface); }
-.verdict-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+/* ---------- grade colours: green хороший, gold нормальный, red плохой ---------- */
+.g-good { --g: var(--pos-2); --g-solid: var(--pos); --g-glow: rgba(63, 189, 127, 0.42); }
+.g-normal { --g: var(--gold-2); --g-solid: var(--gold); --g-glow: rgba(216, 178, 106, 0.38); }
+.g-bad { --g: var(--neg-2); --g-solid: var(--neg); --g-glow: rgba(229, 87, 76, 0.42); }
+
+/* ---------- verdict (the earlier look: centred serif word with a soft glow, no card) ---------- */
+.outcome { position: relative; text-align: center; padding: 18px 0 10px; overflow: hidden; }
+.verdict-glow { position: absolute; inset: -30% -10% 10%; pointer-events: none; opacity: 0.85; background: radial-gradient(50% 50% at 50% 55%, var(--g-glow), transparent 70%); }
 .verdict-word {
-  font: 900 clamp(28px, 8.6vw, 46px)/1 var(--ui); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap;
-  animation: slam 0.4s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  position: relative; font: 400 clamp(24px, 7.4vw, 56px)/1.1 var(--display); letter-spacing: 0.07em; text-transform: uppercase;
+  padding-left: 0.07em; color: var(--g); text-shadow: 0 0 22px var(--g-glow), 0 2px 0 rgba(0, 0, 0, 0.6);
+  text-wrap: balance; animation: slam 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
-.outcome.win .verdict-word { color: var(--pos-2); text-shadow: 0 0 24px rgba(121, 222, 167, 0.35); }
-.outcome.loss .verdict-word { color: var(--neg-2); text-shadow: 0 0 24px rgba(255, 139, 126, 0.3); }
-@keyframes slam { 0% { transform: scale(1.25); opacity: 0; } 100% { transform: none; opacity: 1; } }
-.key-stat { display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
-.ks-label { font-size: 11px; color: var(--muted); }
-.ks-val { font: 800 28px/1 var(--ui); }
-.best-line { margin-top: 10px; font-size: 15px; font-weight: 650; line-height: 1.35; }
-.why-line { margin: 6px 0 0; font-size: 14px; line-height: 1.45; max-width: 62ch; }
-.rule { margin: 10px 0 0; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.12); font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+.outcome.long .verdict-word { font-size: clamp(22px, 6.5vw, 50px); }
+.verdict-word::after {
+  content: ""; position: absolute; left: 10%; right: 10%; bottom: -10px; height: 2px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent); opacity: 0.6;
+}
+@keyframes slam { 0% { transform: scale(1.6); opacity: 0; letter-spacing: 0.4em; } 100% { transform: scale(1); opacity: 1; } }
+.best-line { position: relative; margin-top: 18px; font-size: 16px; font-weight: 600; line-height: 1.35; color: var(--text); }
+.why-line { position: relative; margin: 8px auto 0; max-width: 46ch; font-size: 14.5px; line-height: 1.45; color: var(--text); }
+.rule { position: relative; margin: 10px auto 0; max-width: 56ch; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
+
+/* grade marks in lists, the score counter, the legend */
+.gm { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-size: 10.5px; font-weight: 700; color: var(--g); white-space: nowrap; }
+.gm i, .grade-legend i, .sc i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--g-solid); flex: none; }
+.grade-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+.grade-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sc.g-good b, .sc.g-normal b, .sc.g-bad b { color: var(--g); }
+.sc i { width: 8px; height: 8px; margin-right: 2px; align-self: center; }
 
 /* 1v1 result head: you vs the enemy */
 .duel-head { display: grid; grid-template-columns: minmax(0, 150px) auto minmax(0, 150px); justify-content: space-between; align-items: start; gap: 10px; }
@@ -457,11 +463,13 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .deny-line { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--neg); background: rgba(229, 87, 76, 0.08); font-size: 13.5px; }
 .deny-line.denied { border-left-color: var(--pos); background: rgba(63, 189, 127, 0.1); }
 
-/* last pick: fit split */
-.fit-card { margin: 10px 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-.split-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 54px; align-items: center; gap: 10px; min-height: 26px; font-size: 13px; color: var(--muted); }
-.split-row b { text-align: right; font-size: 14px; }
-.fit-chance { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+/* last pick: contribution panel (as in v6) */
+.fit-card { margin: 10px 0; padding: 10px 12px; text-align: center; background: var(--surface); border: 1px solid rgba(216, 178, 106, 0.45); border-radius: 10px; }
+.fit-main { font-size: 15px; }
+.fit-main b { font: 700 24px/1.1 var(--ui); color: var(--g, var(--gold-2)); }
+.fit-split { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+.fit-split b { color: var(--text); }
+.fit-chance { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 
 /* ---------- Captains Mode ---------- */
 .cm-setup h3 { margin-bottom: 8px; }
@@ -493,11 +501,10 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 .cm-final { text-align: center; padding: 6px 0 2px; }
 .est-label { font-size: 12px; color: var(--muted); }
 .est-p.huge b { font: 900 60px/1 var(--ui); letter-spacing: -0.02em; }
-.est-p.pos b { color: var(--pos-2); }
-.est-p.neg b { color: var(--neg-2); }
+.est-p.huge b { color: var(--g, var(--text)); }
 .est-scale { display: flex; justify-content: space-between; max-width: 320px; margin: 0 auto; font-size: 10px; color: var(--dim); }
-.alts .trow { grid-template-columns: 22px 40px minmax(0, 1fr) 58px 12px; grid-template-areas: "n face name val wl"; }
-.pick-log .trow { grid-template-columns: 22px 40px minmax(0, 1fr) 54px 12px; grid-template-areas: "n face name val wl"; }
+.alts .trow { grid-template-columns: 22px 40px minmax(0, 1fr) 58px 34px; grid-template-areas: "n face name val wl"; }
+.pick-log .trow { grid-template-columns: 22px 40px minmax(0, 1fr) 54px 34px; grid-template-areas: "n face name val wl"; }
 .draft.compact { margin: 8px 0; }
 
 /* ---------- composition (role tags, not statistics) ---------- */
@@ -657,6 +664,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 @media (max-width: 379px) {
   .home-stats { grid-template-columns: 1.35fr 1fr 1fr; }
   .alts .trow { grid-template-columns: 20px 40px minmax(0, 1fr) 62px 12px; }
+  .pick-log .trow { grid-template-columns: 20px 40px minmax(0, 1fr) 54px 12px; }
   .hs { padding: 9px 8px; }
   .hs b { font-size: 15px; }
 }

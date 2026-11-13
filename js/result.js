@@ -100,11 +100,19 @@ export function moreBlock(ds, { user, best, ranked, extra = [] }) {
       provLine(ds)));
 }
 
+// Three counts (хороших, нормальных, плохих) and the streak of хороший picks in a row.
 export function scoreLine(score) {
+  const c = (g, n, label) => h('span', { class: 'sc g-' + g, title: label, 'aria-label': label + ': ' + n }, h('i', { 'aria-hidden': 'true' }), h('b', { text: String(n) }));
   return [
-    h('span', { class: 'sc win', title: 'победы' }, h('b', { text: String(score.win) }), ' W'),
-    h('span', { class: 'sc loss', title: 'поражения' }, h('b', { text: String(score.loss) }), ' L'),
-    score.streak != null ? h('span', { class: 'sc streak', title: 'серия побед' }, 'серия ', h('b', { text: String(score.streak) })) : null,
+    c('good', score.good, 'хороших пиков'),
+    c('normal', score.normal, 'нормальных пиков'),
+    c('bad', score.bad, 'плохих пиков'),
+    score.streak != null ? h('span', { class: 'sc streak', title: 'хороших пиков подряд' }, 'подряд ', h('b', { text: String(score.streak) })) : null,
   ];
+}
+// Add one graded pick to a score: counts per grade, streak of хороший picks.
+export function addScore(score, g) {
+  score[g]++;
+  score.streak = g === 'good' ? score.streak + 1 : 0;
 }
 

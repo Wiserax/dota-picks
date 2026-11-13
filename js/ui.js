@@ -1,5 +1,5 @@
 // Small DOM helpers and shared widgets. All text goes through textContent (data is data).
-import { wilson, calibRange, outOfRange, RULE_TEXT } from './model.js';
+import { wilson, calibRange, outOfRange } from './model.js';
 import { positionsOf, aliasesOf, POS_NAMES, POS_NOTE, posLabel } from './positions.js';
 
 export function h(tag, attrs, ...kids) {
@@ -263,14 +263,29 @@ export function heroGrid(ds, opts) {
   };
 }
 
+// ---------- grade of a pick ----------
+// Three tiers: good (хороший, green), normal (нормальный, gold), bad (плохой, red).
+export const GRADE_WORD = { good: 'Хороший пик', normal: 'Нормальный пик', bad: 'Плохой пик' };
+export const DRAFT_WORD = { good: 'Хороший драфт', normal: 'Нормальный драфт', bad: 'Плохой драфт' };
+const MARK = { good: ['хор.', 'хороший пик'], normal: ['норм.', 'нормальный пик'], bad: ['плох.', 'плохой пик'] };
+
+// Small list mark: a coloured dot plus a short word (the word hides on very narrow screens).
+export function gradeMark(g) {
+  const [short, full] = MARK[g];
+  return h('span', { class: 'c-wl gm g-' + g, title: full, 'aria-label': full, role: 'img' }, h('i', { 'aria-hidden': 'true' }), h('span', { class: 'gm-t', 'aria-hidden': 'true', text: short }));
+}
+export function gradeLegend() {
+  return h('p', { class: 'grade-legend', 'aria-hidden': 'true' },
+    ['good', 'normal', 'bad'].map((g) => h('span', { class: 'g-' + g }, h('i'), MARK[g][1])));
+}
+
 // ---------- outcome ----------
-// Verdict block: ПОБЕДА / ПОРАЖЕНИЕ, the best-pick line, the why line, the rule line.
-// aside: optional key number shown next to the verdict word (presentation only).
-export function outcome({ win, title, bestLine, why, rule = RULE_TEXT, aside = null }) {
-  return h('div', { class: 'outcome ' + (win ? 'win' : 'loss'), role: 'status' },
-    h('div', { class: 'verdict-band' },
-      h('div', { class: 'verdict-word', text: title || (win ? 'Победа' : 'Поражение') }),
-      aside ? h('div', { class: 'verdict-aside' }, aside) : null),
+// Verdict block: the grade word (centred, with a soft glow), the best-pick line, the why line, the rule line.
+export function outcome({ grade, title, bestLine, why, rule }) {
+  const word = title || GRADE_WORD[grade];
+  return h('div', { class: 'outcome g-' + grade + (word.length > 14 ? ' long' : ''), role: 'status' },
+    h('div', { class: 'verdict-glow', 'aria-hidden': 'true' }),
+    h('div', { class: 'verdict-word', text: word }),
     bestLine ? h('div', { class: 'best-line', text: bestLine }) : null,
     why ? h('p', { class: 'why-line', text: why }) : null,
     rule ? h('p', { class: 'rule', text: rule }) : null);

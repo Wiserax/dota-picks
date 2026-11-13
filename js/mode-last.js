@@ -4,16 +4,16 @@
 // model, internal realism); if you took that hero, he takes his next best. Your best pick
 // is the available hero (any position) that maximizes your chance after the enemy's
 // response, so denying counts.
-// Verdict (owner, 2026-11-13): FIT to the draft, statistics only (model.js draftFit): your hero's
+// Grade (owner, 2026-11-13, model.js gradeFit): FIT to the draft, statistics only (model.js draftFit): your hero's
 // matchups against the 5 final enemies plus synergies with the 4 allies, hero strength removed.
 // The full draft chance is shown as info only. The composition block is explanation only.
-import { h, clear, fill, portrait, heroGrid, pct, range, outcome, pairRow, provLine, dbar, hname, keyStat, tableHead, tone } from './ui.js';
-import { estimate, rankCandidates, draftFit, fitWins, RULE_LAST } from './model.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, outcome, pairRow, provLine, dbar, hname, tableHead, tone, gradeMark, gradeLegend } from './ui.js';
+import { estimate, rankCandidates, draftFit, fitWins, gradeFit, RULE_LAST } from './model.js';
 import { plays } from './positions.js';
 import { fitWhy } from './explain.js';
-import { scoreLine, compositionBlock } from './result.js';
+import { scoreLine, addScore, compositionBlock } from './result.js';
 
-const score = { win: 0, loss: 0 };
+const score = { good: 0, normal: 0, bad: 0, streak: 0 };
 const signed = (x) => (x > 0 ? '+' : x < 0 ? '-' : '') + Math.abs(x) + '%';
 const signed1 = (x) => { const v = Math.round(x * 10) / 10 || 0; return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; };
 
@@ -108,7 +108,8 @@ export function mount(root, ds) {
     const user = ranked.find((c) => c.id === userId) || evalPick(userId);
     const win = fitWins(user.fit);
     const isBest = user.fit.shown === best.fit.shown;
-    if (win) score.win++; else score.loss++;
+    const grade = gradeFit(user.fit, isBest);
+    addScore(score, grade);
     drawScore();
     const enemyLast = response(userId);
     // full draft chance: info only, never the verdict
@@ -118,29 +119,31 @@ export function mount(root, ds) {
       ? 'Враг хотел ' + ds.hero(wanted).name + ': ты его забрал, он взял ' + ds.hero(nextE).name + ' (его шанс ' + (denyDrop >= 1 ? '-' + denyDrop + '%' : 'меньше на долю процента') + ').'
       : 'Враг взял ' + ds.hero(wanted).name + ', как и хотел.';
     const why = fitWhy(ds, user, best, { win, isBest, wantedId: wanted, nextId: nextE });
-    const bestLine = (isBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(best.id).name + ': ' + signed(best.fit.shown) + '.') + ' Твой вклад: ' + signed(user.fit.shown) + '.';
+    const bestLine = (isBest ? (win ? 'Лучший пик!' : 'Лучший пик из доступных.') : 'Лучший был ' + ds.hero(best.id).name + ': ' + signed(best.fit.shown) + '.') + ' Твой вклад: ' + signed(user.fit.shown) + '.';
     const next = h('button', { class: 'btn primary big next', type: 'button', text: 'Следующий раунд', onclick: round });
     const pairs = (c) => c.fit.terms.filter((t) => t.pair.flag !== 2).sort((a, b) => Math.abs(b.contrib) - Math.abs(a.contrib)).slice(0, 4);
     const pairsBlock = (c, title) => h('div', { class: 'reason' }, h('h4', { text: title }),
       pairs(c).length ? pairs(c).map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' }));
     const top = ranked.slice(0, 5);
     const SCALE = 8; // bar half-width, percent points
-    const fitRow = (c, cls = '') => h('li', { class: 'trow ' + (c.id === userId ? 'me ' : '') + (fitWins(c.fit) ? 'w' : 'l') + cls },
+    const gradeOf = (c) => gradeFit(c.fit, c.fit.shown === best.fit.shown);
+    const fitRow = (c, cls = '') => h('li', { class: 'trow ' + (c.id === userId ? 'me ' : '') + 'g-' + gradeOf(c) + cls },
       h('span', { class: 'c-n', text: String(c.rank) }), portrait(ds.hero(c.id), 'xs'),
       h('span', { class: 'c-name' }, hname(ds.hero(c.id)), c.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
         c.id === wanted ? h('small', { class: 'c-tag t-bad', text: 'нужен врагу' }) : null,
         h('span', { class: 'c-split' }, 'враги ', h('b', { text: signed1(c.fit.vsPct) }), ' · союзники ', h('b', { text: signed1(c.fit.withPct) }))),
       h('span', { class: 'c-val' }, h('b', { class: tone(c.fit.shown), text: signed(c.fit.shown) }), dbar(c.fit.pct, SCALE)),
-      h('span', { class: 'c-wl', text: fitWins(c.fit) ? 'W' : 'L' }));
-    const splitRow = (label, v) => h('div', { class: 'split-row' }, h('span', { class: 'split-label', text: label }), dbar(v, SCALE), h('b', { class: tone(v), text: signed1(v) }));
+      gradeMark(gradeOf(c)));
     const el = h('section', { class: 'result' },
       board(st, { userId, enemyLast, reveal: true }),
       h('div', { class: 'after-reveal' },
         h('p', { class: 'deny-line' + (userId === wanted ? ' denied' : ''), text: denyLine }),
-        outcome({ win, bestLine, why, rule: RULE_LAST, aside: keyStat('вклад в драфт', signed(user.fit.shown), tone(user.fit.shown)) }),
-        h('div', { class: 'fit-card' },
-          splitRow('против врагов', user.fit.vsPct),
-          splitRow('с союзниками', user.fit.withPct),
+        outcome({ grade, bestLine, why, rule: RULE_LAST }),
+        h('div', { class: 'fit-card g-' + grade },
+          h('div', { class: 'fit-main' }, 'вклад в драфт: ', h('b', { text: signed(user.fit.shown) })),
+          h('div', { class: 'fit-split' },
+            h('span', null, 'против врагов: ', h('b', { text: signed1(user.fit.vsPct) })),
+            h('span', null, 'с союзниками: ', h('b', { text: signed1(user.fit.withPct) }))),
           h('div', { class: 'fit-chance', text: 'шанс драфта: ' + pct(chance.p) + ' (с учётом силы героев)' })),
         h('div', { class: 'next-wrap' }, next),
         h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Что решило' })),
@@ -150,11 +153,11 @@ export function mount(root, ds) {
           h('p', { class: 'sec-sub', text: 'Матчапы против 5 врагов (с его ответным пиком) плюс связки с 4 союзниками. Сила героев убрана.' }),
           h('p', { class: 'rank-line' }, 'Твой выбор: ', h('b', { text: 'место ' + user.rank + ' из ' + ranked.length })),
           tableHead([['#', 'c-n'], ['', 'c-face'], ['герой', 'c-name'], ['вклад', 'c-val'], ['', 'c-wl']]),
-          h('ol', { class: 'stat-table' }, top.map((c) => fitRow(c)), top.some((c) => c.id === userId) ? null : fitRow(user, ' rank-gap'))),
+          h('ol', { class: 'stat-table' }, top.map((c) => fitRow(c)), top.some((c) => c.id === userId) ? null : fitRow(user, ' rank-gap')), gradeLegend()),
         compositionBlock(ds, [{ label: 'Твоя команда', ids: [...ally4, userId] }], { before: ally4, pickId: userId }),
         h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
           h('p', { text: 'Вклад в драфт = b × сумма матчапов против врагов + c × сумма связок с союзниками, в лог-шансах; b = ' + ds.model.b.toFixed(3).replace('.', ',') + ', c = ' + ds.model.c.toFixed(3).replace('.', ',') + ' (веса модели брекета). Пары с малым числом игр сжаты почти к нулю и не называются причиной.' }),
-          h('p', { text: 'Шанс драфта с твоим пиком: ' + pct(chance.p) + ', 95% интервал ' + range(chance.lo, chance.hi) + '. Это справка, на вердикт не влияет.' }),
+          h('p', { text: 'Шанс драфта с твоим пиком: ' + pct(chance.p) + ', 95% интервал ' + range(chance.lo, chance.hi) + '. Это справка, на оценку пика не влияет.' }),
           h('p', { text: 'Враг выбирал по видимым 4 на 4 полной моделью: ' + enemyRank.slice(0, 3).map((r) => ds.hero(r.id).name + ' ' + pct(r.est.p)).join(', ') + ' (его шанс).' }),
           user.fit.terms.filter((t) => t.pair.flag !== 2).map((t) => pairRow(ds, t, { detail: true })),
           provLine(ds)))));

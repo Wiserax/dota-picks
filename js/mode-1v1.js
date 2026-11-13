@@ -1,17 +1,17 @@
 // Mode 1: 1 v 1. You see the enemy hero and pick ANY hero against him, one tap, 10 seconds.
 // The question is "who counters this hero", not "who is strong": the metric is the pair term
 // only (shrunk matchup advantage, base win rates of both heroes removed), shown as the shift
-// from an even game. Rule (one, printed on screen): ПОБЕДА if your matchup is +1% or better
-// in whole percents, otherwise ПОРАЖЕНИЕ. Thin pairs (flag 2) are never counters.
+// from an even game. Grade (printed on screen, quiz.js grade1v1): хороший пик at +1% or better
+// in whole percents, нормальный at 0%, плохой below. Thin pairs (flag 2) are never counters.
 // Last pick and Captains Mode keep the full model (hero strength + pairs).
-import { h, clear, fill, portrait, chip, pct1, range1, nfmt, plural, heroGrid, outcome, provLine, dbar, hname, keyStat, tableHead, tone } from './ui.js';
+import { h, clear, fill, portrait, chip, pct1, range1, nfmt, plural, heroGrid, outcome, provLine, dbar, hname, tableHead, tone, gradeMark, gradeLegend } from './ui.js';
 import { wilson } from './model.js';
-import { buildQuiz, sampleEnemy, rankCounters, matchup, wins1v1, WIN_MIN } from './quiz.js';
-import { scoreLine } from './result.js';
+import { buildQuiz, sampleEnemy, rankCounters, matchup, grade1v1, WIN_MIN, NORMAL_MIN_1V1 } from './quiz.js';
+import { scoreLine, addScore } from './result.js';
 
 const SECONDS = 10;
 const TOP = 5;
-const score = { win: 0, loss: 0, streak: 0 };
+const score = { good: 0, normal: 0, bad: 0, streak: 0 };
 
 const signed = (x) => (x > 0 ? '+' : x < 0 ? '-' : '') + Math.abs(x) + '%';
 const signed1 = (x) => { const v = Math.round(x * 10) / 10 || 0; return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; };
@@ -20,7 +20,7 @@ const facts = (m) => (m.n ? 'выигрывает ' + pct1(m.wins / m.n) + ' и�
 const tagOf = (m) => (m.thin ? 'мало данных' : m.flag === 1 ? (m.adv >= 0 ? 'проверенная контра' : 'проверенно плохой матчап') : 'по статистике');
 const shiftWords = (s) => (s > 0 ? 'на ' + s + '% лучше, чем обычно' : s < 0 ? 'на ' + Math.abs(s) + '% хуже, чем обычно' : 'как обычно, без перевеса');
 
-export const RULE_1V1 = (ds) => 'Правило 1 на 1: ПОБЕДА, если матчап твоего героя против врага +' + WIN_MIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Пара, где меньше ' + nfmt(ds.minGames) + ' игр, контрой не считается.';
+export const RULE_1V1 = (ds) => 'Хороший пик: матчап +' + WIN_MIN + '% или лучше. Нормальный: ' + NORMAL_MIN_1V1 + '%. Плохой: ниже нуля. Пара меньше чем с ' + nfmt(ds.minGames) + ' играми: нормальный, оценить нельзя.';
 export const EXPLAIN_1V1 = 'Матчап: насколько герой играет против него лучше обычного. Сила героя в патче убрана.';
 const SCALE = 6; // bar half-width, percent points
 
@@ -85,17 +85,17 @@ export function mount(root, ds) {
     timer = setTimeout(() => finish(enemyId, null, true), SECONDS * 1000);
   }
 
-  function row(m, userId, extraCls = '') {
+  function row(m, userId, bestShown, extraCls = '') {
     const hero = ds.hero(m.id);
-    const win = wins1v1(m);
-    return h('li', { class: 'trow ' + (m.id === userId ? 'me ' : '') + (win ? 'w' : 'l') + extraCls },
+    const g = grade1v1(m, { best: !m.thin && m.shown === bestShown });
+    return h('li', { class: 'trow ' + (m.id === userId ? 'me ' : '') + 'g-' + g + extraCls },
       h('span', { class: 'c-n', text: m.thin ? '-' : String(m.rank) }),
       portrait(hero, 'xs'),
       h('span', { class: 'c-name' }, hname(hero), m.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
         h('small', { class: 'c-tag t-' + (m.thin ? 'thin' : m.flag === 1 ? (m.adv >= 0 ? 'ok' : 'bad') : 'stat'), text: tagOf(m) })),
       h('span', { class: 'c-val' }, h('b', { class: m.thin ? 'zero' : tone(m.shown), text: m.thin ? '-' : signed(m.shown) }), m.thin ? null : dbar(m.pct, SCALE)),
       h('span', { class: 'c-facts' }, m.n ? h('span', { text: pct1(m.wins / m.n) }) : null, h('small', { text: m.n ? gamesOf(m.n) : 'нет игр' })),
-      h('span', { class: 'c-wl', text: win ? 'W' : 'L' }));
+      gradeMark(g));
   }
 
   function whyText(enemy, user, best, timeout) {
@@ -122,19 +122,19 @@ export function mount(root, ds) {
     const { solid } = rankCounters(ds, enemyId);
     const best = solid[0];
     const user = userId != null ? (solid.find((m) => m.id === userId) || matchup(ds, userId, enemyId)) : null;
-    const win = !!user && wins1v1(user);
-    if (win) { score.win++; score.streak++; } else { score.loss++; score.streak = 0; }
+    const isBest = !!user && !user.thin && user.shown === best.shown;
+    const grade = grade1v1(user, { best: isBest, timeout: timeout || !user });
+    addScore(score, grade);
     drawScore();
-    const isBest = user && !user.thin && user.shown === best.shown;
-    const bestPart = isBest ? 'Лучшая контра!' : 'Лучшая контра: ' + ds.hero(best.id).name + ', ' + signed(best.shown) + '.';
-    const bestLine = timeout ? 'Время вышло. ' + bestPart
-      : user.thin ? 'У этой пары мало игр: контрой не считаем. ' + bestPart
+    const bestPart = isBest ? (user.shown >= WIN_MIN ? 'Лучшая контра!' : 'Лучший пик из доступных.') : 'Лучшая контра: ' + ds.hero(best.id).name + ', ' + signed(best.shown) + '.';
+    const bestLine = timeout || !user ? 'Время вышло. ' + bestPart
+      : user.thin ? 'У этой пары мало игр: оценить нельзя. ' + bestPart
         : bestPart + ' Твой матчап: ' + signed(user.shown) + '.';
     const next = h('button', { class: 'btn primary big next', type: 'button', text: 'Следующий раунд', onclick: round });
 
     const top = solid.slice(0, TOP);
     const inTop = user && top.some((m) => m.id === user.id);
-    const list = h('ol', { class: 'stat-table' }, top.map((m) => row(m, userId)), user && !inTop ? row(user, userId, ' rank-gap') : null);
+    const list = h('ol', { class: 'stat-table' }, top.map((m) => row(m, userId, best.shown)), user && !inTop ? row(user, userId, best.shown, ' rank-gap') : null);
     const rankLine = user ? h('p', { class: 'rank-line' }, 'Твой выбор: ',
       user.thin ? h('b', { text: 'не в рейтинге' }) : h('b', { text: 'место ' + user.rank + ' из ' + solid.length }),
       user.thin ? ' (у пары мало игр)' : ' (герои, у которых с ним хватает игр)') : null;
@@ -143,17 +143,16 @@ export function mount(root, ds) {
       id != null ? portrait(ds.hero(id), 'duel') : h('div', { class: 'portrait duel empty' }, h('span', { class: 'fallback', text: 'нет пика' })),
       h('span', { class: 'duel-label', text: label }),
       id != null ? hname(ds.hero(id), 'duel-name') : h('span', { class: 'duel-name', text: 'время вышло' }));
-    const aside = user && !user.thin ? keyStat('твой матчап', signed(user.shown), tone(user.shown)) : keyStat('лучший матчап', signed(best.shown), 'pos');
     const el = h('section', { class: 'result' },
       h('div', { class: 'duel-head' }, face(userId, 'you', 'ты'), h('span', { class: 'duel-vs', text: 'vs' }), face(enemyId, 'foe', 'враг')),
-      outcome({ win, bestLine, why: whyText(enemy, user, best, timeout), rule: RULE_1V1(ds), aside }),
+      outcome({ grade, bestLine, why: whyText(enemy, user, best, timeout), rule: RULE_1V1(ds) }),
       h('div', { class: 'next-wrap' }, next),
       h('section', { class: 'panel' },
         h('div', { class: 'sec-head' }, h('h3', { text: 'Лучшие контры против ' + enemy.name })),
         h('p', { class: 'sec-sub', text: EXPLAIN_1V1 }),
         rankLine,
         tableHead([['#', 'c-n'], ['', 'c-face'], ['герой', 'c-name'], ['матчап', 'c-val'], ['винрейт', 'c-facts'], ['', 'c-wl']]),
-        list),
+        list, gradeLegend()),
       h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
         h('p', { text: 'Матчап: преимущество пары из данных, без силы самих героев в патче, в процентах от ровной игры (50%). Пара: матчи, где оба героя были в игре на разных сторонах. Это не матчап на линии: данных по линиям нет.' }),
         user ? detail(user, enemy, 'Твой пик') : null,

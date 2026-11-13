@@ -1,6 +1,6 @@
 // Mode 3: Captains Mode against a greedy bot that uses the same model.
-import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, dbar, hname, tone } from './ui.js';
-import { estimate, rankCandidates, judge } from './model.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, dbar, hname, tone, plural, gradeMark, gradeLegend, DRAFT_WORD } from './ui.js';
+import { estimate, rankCandidates, judge, gradeGap, gradeDraft, RULE_DRAFT, RULE_TEXT } from './model.js';
 import { plays, positionsOf } from './positions.js';
 import { compositionBlock } from './result.js';
 
@@ -183,7 +183,7 @@ export function mount(root, ds) {
     const bot = st.bot.picks.map((x) => x.id);
     const est = estimate(ds, me, bot);
     const pctNow = Math.round(est.p * 100);
-    const win = pctNow >= 50;
+    const grade = gradeDraft(pctNow);
     const sumOf = (kind) => est.terms.filter((t) => t.kind === kind).reduce((s, t) => s + t.contrib, 0);
     const toPP = (part) => (est.p - 1 / (1 + Math.exp(-(est.z - part)))) * 100;
     const parts = [
@@ -206,7 +206,9 @@ export function mount(root, ds) {
       : '';
     const why = 'Почему: ' + (parts[0].v >= 0 ? parts[0].pos : parts[0].neg)
       + (top ? '; самая важная пара: ' + ds.hero(top.heroes[0]).name + ' против ' + ds.hero(top.heroes[1]).name : '') + synText + '.';
-    const pickWins = st.log.filter((l) => l.j.win).length;
+    const n = (g) => st.log.filter((l) => gradeGap(l.j) === g).length;
+    const pickLine = 'Твои пики: ' + n('good') + ' ' + plural(n('good'), 'хороший', 'хороших', 'хороших') + ', ' + n('normal') + ' ' + plural(n('normal'), 'нормальный', 'нормальных', 'нормальных')
+      + ', ' + n('bad') + ' ' + plural(n('bad'), 'плохой', 'плохих', 'плохих') + '.';
     const again = h('button', { class: 'btn primary big next', type: 'button', text: 'Новый драфт', onclick: setup });
     const finalTeam = (label, t, cls) => h('div', { class: 'team ' + cls }, h('div', { class: 'team-label', text: label }),
       h('div', { class: 'team-slots' }, [...t.picks].sort((a, b) => a.pos - b.pos).map((x) => h('div', { class: 'slot' }, portrait(ds.hero(x.id), 'slot'), h('span', { class: 'slot-pos', text: String(x.pos) })))));
@@ -214,22 +216,22 @@ export function mount(root, ds) {
     const el = h('section', { class: 'result' },
       h('div', { class: 'cm-final' },
         h('div', { class: 'est-label', text: 'Шанс твоего драфта' }),
-        h('div', { class: 'est-p huge ' + (win ? 'pos' : 'neg') }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
+        h('div', { class: 'est-p huge g-' + grade }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
         dbar((est.p - 0.5) * 100, 15, 'big'),
         h('div', { class: 'est-scale', 'aria-hidden': 'true' }, h('span', { text: '35%' }), h('span', { text: '50%' }), h('span', { text: '65%' })),
         rangeNote(ds, est.p)),
-      outcome({ win, bestLine: 'Пики по правилу раунда: ' + pickWins + ' из ' + st.log.length + ' в плюс.', why,
-        rule: 'Правило: ПОБЕДА, если шанс твоего драфта 50% или больше. Каждый пик в списке ниже: по правилу раунда (50% или не дальше 3% от лучшего из всех доступных героев).' }),
+      outcome({ grade, title: DRAFT_WORD[grade], bestLine: pickLine, why, rule: RULE_DRAFT + ' ' + RULE_TEXT }),
       h('div', { class: 'draft compact' }, finalTeam('Ты', st.me, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot, 'enemy')),
       h('div', { class: 'next-wrap' }, again),
       h('section', { class: 'panel' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Твои пики' }), h('span', { class: 'sec-note', text: 'шанс на момент пика' })),
-        h('ol', { class: 'stat-table pick-log' }, st.log.map((l, i) => h('li', { class: 'trow log-row ' + (l.j.win ? 'w' : 'l') },
+        h('ol', { class: 'stat-table pick-log' }, st.log.map((l, i) => h('li', { class: 'trow log-row g-' + gradeGap(l.j) },
           h('span', { class: 'c-n', text: String(i + 1) }),
           portrait(ds.hero(l.id), 'xs'),
           h('span', { class: 'c-name' }, hname(ds.hero(l.id)),
             h('small', { class: 'c-tag ' + (l.id === l.bestId || l.j.nearBest ? 't-ok' : 't-stat'), text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })),
           h('span', { class: 'c-val' }, h('b', { class: tone(l.j.u - 50), text: l.j.u + '%' }), dbar((l.est.p - 0.5) * 100, 15)),
-          h('span', { class: 'c-wl', text: l.j.win ? 'W' : 'L' })))),
+          gradeMark(gradeGap(l.j))))),
+        gradeLegend(),
         h('p', { class: 'muted small', text: 'Шанс на момент пика, по уже выбранным героям. Будущие пики модель не знает.' })),
       h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Ключевые матчапы' })),
         keyVs.length ? keyVs.map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' })),

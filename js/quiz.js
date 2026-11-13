@@ -2,12 +2,14 @@
 // the shrunk matchup advantage of hero X against the enemy from the data (adv, log-odds,
 // base win rates of both heroes already removed), shown as the shift from an even game:
 //   advPct = (sigmoid(adv) - 0.5) * 100
-// Only non-thin pairs (flag not 2) are ranked or can win. Verdict on the whole percent
-// shown on screen: ПОБЕДА if the matchup is +WIN_MIN% or better, otherwise ПОРАЖЕНИЕ.
+// Only non-thin pairs (flag not 2) are ranked or count as counters. Grade on the whole percent
+// shown on screen (owner, 2026-11-13): хороший пик at +WIN_MIN% or better, нормальный at
+// NORMAL_MIN_1V1% (0%), плохой below. A thin pair is нормальный ("оценить нельзя"), a timeout
+// is плохой, the best available pick is always хороший. wins1v1 = хороший by the threshold.
 //
 // Enemy pool, per bracket at load time: an enemy qualifies if at least MIN_WINNERS heroes
-// win by the rule, at least FLAG1 of those carry flag 1 (verified), and at least half of the
-// non-thin heroes lose. If fewer than MIN_ENEMIES qualify, FLAG1 is relaxed to 1.
+// are хороший by the rule, at least FLAG1 of those carry flag 1 (verified), and at least half of the
+// non-thin heroes are not хороший. If fewer than MIN_ENEMIES qualify, FLAG1 is relaxed to 1.
 import { sigmoid } from './model.js';
 
 export const WIN_MIN = 1;
@@ -20,6 +22,13 @@ export const NO_REPEAT = 10;
 export const advPct = (adv) => (sigmoid(adv) - 0.5) * 100;
 export const shownPct = (x) => Math.round(x) || 0; // whole percent on screen; avoids -0
 export const wins1v1 = (m) => !m.thin && m.shown >= WIN_MIN;
+export const NORMAL_MIN_1V1 = 0;
+export function grade1v1(m, { best = false, timeout = false } = {}) {
+  if (timeout || !m) return 'bad';
+  if (best) return 'good';
+  if (m.thin) return 'normal';
+  return m.shown >= WIN_MIN ? 'good' : m.shown >= NORMAL_MIN_1V1 ? 'normal' : 'bad';
+}
 
 // Matchup of hero x against the enemy, seen from x.
 export function matchup(ds, x, enemyId) {

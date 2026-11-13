@@ -114,9 +114,14 @@ export function draftFit(ds, id, allies, enemies) {
   const pct = fitPct(z);
   return { z, pct, shown: Math.round(pct) || 0, vsPct: fitPct(zVs), withPct: fitPct(zWith), terms };
 }
+// Grade of a last pick (owner, 2026-11-13), on the whole percent shown: хороший at +FIT_WIN% or
+// better, нормальный from FIT_NORMAL% to +(FIT_WIN - 1)%, плохой below FIT_NORMAL%. The best
+// available pick is always хороший. fitWins = "хороший by the threshold" (the old win rule).
 export const FIT_WIN = 3;
-export const RULE_LAST = 'Правило: ПОБЕДА, если вклад твоего героя в драфт +' + FIT_WIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Сила самих героев в патче сюда не входит.';
+export const FIT_NORMAL = 0;
+export const RULE_LAST = 'Хороший пик: вклад в драфт +' + FIT_WIN + '% или лучше. Нормальный: от ' + FIT_NORMAL + ' до +' + (FIT_WIN - 1) + '%. Плохой: ниже нуля. Сила героя в патче не считается.';
 export const fitWins = (f) => f.shown >= FIT_WIN;
+export const gradeFit = (f, isBest = false) => (isBest || f.shown >= FIT_WIN ? 'good' : f.shown >= FIT_NORMAL ? 'normal' : 'bad');
 
 // Evaluate every available candidate for X's next slot. Returns sorted best first.
 export function rankCandidates(ds, X, Y, available, fn = estimate) {
@@ -143,11 +148,21 @@ export function thinPairs(est, id) {
   return termsOf(est, id).filter((t) => t.kind !== 'base' && t.pair.flag === 2);
 }
 
-// Verdict rule (owner's decision, 2026-11-13), on the shown whole-percent point estimates:
-// ПОБЕДА if your chance is 50% or more, OR your pick is at most WIN_SLACK points below the
-// best available pick (of all heroes). Otherwise ПОРАЖЕНИЕ. Uncertainty is not part of it.
+// Captains Mode pick grade (owner, 2026-11-13), on the shown whole-percent point estimates:
+// the gap to the best available pick (of all heroes) at that moment, on the full chance.
+// хороший if at most WIN_SLACK points behind, нормальный up to CM_NORMAL_GAP, else плохой.
+// Uncertainty is not part of it. judge().win is kept as computed before (not used for the grade).
 export const WIN_SLACK = 3;
-export const RULE_TEXT = 'Правило: ПОБЕДА, если твой шанс 50% или больше, или твой пик отстаёт от лучшего доступного пика не больше чем на 3%.';
+export const CM_NORMAL_GAP = 6;
+export const RULE_TEXT = 'Пик в списке: хороший, если отстаёт от лучшего доступного не больше чем на ' + WIN_SLACK + '%; нормальный, если до ' + CM_NORMAL_GAP + '%; иначе плохой.';
+export const gradeGap = (j) => (j.gap <= WIN_SLACK ? 'good' : j.gap <= CM_NORMAL_GAP ? 'normal' : 'bad');
+
+// Captains Mode draft grade on the full chance in whole percents: хороший at DRAFT_GOOD or more,
+// плохой at DRAFT_BAD or less, нормальный in between.
+export const DRAFT_GOOD = 53;
+export const DRAFT_BAD = 47;
+export const RULE_DRAFT = 'Хороший драфт: шанс ' + DRAFT_GOOD + '% или больше. Нормальный: от ' + (DRAFT_BAD + 1) + ' до ' + (DRAFT_GOOD - 1) + '%. Плохой: ' + DRAFT_BAD + '% или меньше.';
+export const gradeDraft = (pctWhole) => (pctWhole >= DRAFT_GOOD ? 'good' : pctWhole <= DRAFT_BAD ? 'bad' : 'normal');
 
 export function judge(userP, bestP) {
   const u = Math.round(userP * 100);
