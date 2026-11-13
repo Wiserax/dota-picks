@@ -7,7 +7,7 @@
 // Verdict (owner, 2026-11-13): FIT to the draft, statistics only (model.js draftFit): your hero's
 // matchups against the 5 final enemies plus synergies with the 4 allies, hero strength removed.
 // The full draft chance is shown as info only. The composition block is explanation only.
-import { h, clear, fill, portrait, heroGrid, pct, range, outcome, pairRow, provLine } from './ui.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, outcome, pairRow, provLine, dbar, hname, keyStat, tableHead, tone } from './ui.js';
 import { estimate, rankCandidates, draftFit, fitWins, RULE_LAST } from './model.js';
 import { plays } from './positions.js';
 import { fitWhy } from './explain.js';
@@ -86,7 +86,7 @@ export function mount(root, ds) {
     });
     stage.append(
       board(st),
-      h('p', { class: 'hint', text: 'Твой последний пик: любой герой. Пики одновременно: враг не видит твой пик, ты не видишь его.' }),
+      h('p', { class: 'hint', text: 'Твой последний пик: любой герой. Враг пикает одновременно, вслепую.' }),
       grid.el);
   }
 
@@ -124,31 +124,33 @@ export function mount(root, ds) {
     const pairsBlock = (c, title) => h('div', { class: 'reason' }, h('h4', { text: title }),
       pairs(c).length ? pairs(c).map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' }));
     const top = ranked.slice(0, 5);
-    const fitRow = (c, cls = '') => h('li', { class: (c.id === userId ? 'me ' : '') + (fitWins(c.fit) ? 'w' : 'l') + cls },
-      h('span', { class: 'six-n', text: String(c.rank) }), portrait(ds.hero(c.id), 'xs'),
-      h('span', { class: 'six-name' }, ds.hero(c.id).name, c.id === userId ? h('small', { text: ' твой выбор' }) : null),
-      h('span', { class: 'six-p' }, h('b', { text: signed1(c.fit.pct) }),
-        h('small', { text: 'враги ' + signed1(c.fit.vsPct) + ' · союзники ' + signed1(c.fit.withPct) + (c.id === wanted ? ' · нужен врагу' : '') })),
-      h('span', { class: 'six-wl', text: fitWins(c.fit) ? 'W' : 'L' }));
+    const SCALE = 8; // bar half-width, percent points
+    const fitRow = (c, cls = '') => h('li', { class: 'trow ' + (c.id === userId ? 'me ' : '') + (fitWins(c.fit) ? 'w' : 'l') + cls },
+      h('span', { class: 'c-n', text: String(c.rank) }), portrait(ds.hero(c.id), 'xs'),
+      h('span', { class: 'c-name' }, hname(ds.hero(c.id)), c.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
+        c.id === wanted ? h('small', { class: 'c-tag t-bad', text: 'нужен врагу' }) : null,
+        h('span', { class: 'c-split' }, 'враги ', h('b', { text: signed1(c.fit.vsPct) }), ' · союзники ', h('b', { text: signed1(c.fit.withPct) }))),
+      h('span', { class: 'c-val' }, h('b', { class: tone(c.fit.pct), text: signed1(c.fit.pct) }), dbar(c.fit.pct, SCALE)),
+      h('span', { class: 'c-wl', text: fitWins(c.fit) ? 'W' : 'L' }));
+    const splitRow = (label, v) => h('div', { class: 'split-row' }, h('span', { class: 'split-label', text: label }), dbar(v, SCALE), h('b', { class: tone(v), text: signed1(v) }));
     const el = h('section', { class: 'result' },
       board(st, { userId, enemyLast, reveal: true }),
       h('div', { class: 'after-reveal' },
         h('p', { class: 'deny-line' + (userId === wanted ? ' denied' : ''), text: denyLine }),
-        outcome({ win, bestLine, why, rule: RULE_LAST }),
+        outcome({ win, bestLine, why, rule: RULE_LAST, aside: keyStat('вклад в драфт', signed(user.fit.shown), tone(user.fit.shown)) }),
         h('div', { class: 'fit-card' },
-          h('div', { class: 'fit-main' }, 'вклад в драфт: ', h('b', { text: signed(user.fit.shown) })),
-          h('div', { class: 'fit-split' },
-            h('span', null, 'против врагов: ', h('b', { text: signed1(user.fit.vsPct) })),
-            h('span', null, 'с союзниками: ', h('b', { text: signed1(user.fit.withPct) }))),
-          h('div', { class: 'fit-chance muted small', text: 'шанс драфта: ' + pct(chance.p) + ' (с учётом силы героев)' })),
+          splitRow('против врагов', user.fit.vsPct),
+          splitRow('с союзниками', user.fit.withPct),
+          h('div', { class: 'fit-chance', text: 'шанс драфта: ' + pct(chance.p) + ' (с учётом силы героев)' })),
         h('div', { class: 'next-wrap' }, next),
-        h('section', { class: 'panel why' }, h('h3', { text: 'Что решило' }),
+        h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Что решило' })),
           pairsBlock(user, 'Твой пик: ' + ds.hero(user.id).name),
           best.id !== user.id ? pairsBlock(best, 'Лучший: ' + ds.hero(best.id).name) : null),
-        h('section', { class: 'panel alts' }, h('h3', { text: 'Лучшие по вкладу в драфт' }),
-          h('p', { class: 'muted small', text: 'Вклад: матчапы против пяти врагов (с его ответным пиком) плюс связки с четырьмя союзниками. Сила самих героев убрана.' }),
+        h('section', { class: 'panel alts' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Лучшие по вкладу в драфт' })),
+          h('p', { class: 'sec-sub', text: 'Матчапы против 5 врагов (с его ответным пиком) плюс связки с 4 союзниками. Сила героев убрана.' }),
           h('p', { class: 'rank-line' }, 'Твой выбор: ', h('b', { text: 'место ' + user.rank + ' из ' + ranked.length })),
-          h('ol', { class: 'six' }, top.map((c) => fitRow(c)), top.some((c) => c.id === userId) ? null : fitRow(user, ' rank-gap'))),
+          tableHead([['#', 'c-n'], ['', 'c-face'], ['герой', 'c-name'], ['вклад', 'c-val'], ['', 'c-wl']]),
+          h('ol', { class: 'stat-table' }, top.map((c) => fitRow(c)), top.some((c) => c.id === userId) ? null : fitRow(user, ' rank-gap'))),
         compositionBlock(ds, [{ label: 'Твоя команда', ids: [...ally4, userId] }], { before: ally4, pickId: userId }),
         h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
           h('p', { text: 'Вклад в драфт = b × сумма матчапов против врагов + c × сумма связок с союзниками, в лог-шансах; b = ' + ds.model.b.toFixed(3).replace('.', ',') + ', c = ' + ds.model.c.toFixed(3).replace('.', ',') + ' (веса модели брекета). Пары с малым числом игр сжаты почти к нулю и не называются причиной.' }),

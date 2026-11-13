@@ -4,7 +4,7 @@
 // from an even game. Rule (one, printed on screen): ПОБЕДА if your matchup is +1% or better
 // in whole percents, otherwise ПОРАЖЕНИЕ. Thin pairs (flag 2) are never counters.
 // Last pick and Captains Mode keep the full model (hero strength + pairs).
-import { h, clear, fill, portrait, chip, pct1, range1, nfmt, plural, heroGrid, outcome, provLine } from './ui.js';
+import { h, clear, fill, portrait, chip, pct1, range1, nfmt, plural, heroGrid, outcome, provLine, dbar, hname, keyStat, tableHead, tone } from './ui.js';
 import { wilson } from './model.js';
 import { buildQuiz, sampleEnemy, rankCounters, matchup, wins1v1, WIN_MIN } from './quiz.js';
 import { scoreLine } from './result.js';
@@ -21,7 +21,8 @@ const tagOf = (m) => (m.thin ? 'мало данных' : m.flag === 1 ? (m.adv >
 const shiftWords = (s) => (s > 0 ? 'на ' + s + '% лучше, чем обычно' : s < 0 ? 'на ' + Math.abs(s) + '% хуже, чем обычно' : 'как обычно, без перевеса');
 
 export const RULE_1V1 = (ds) => 'Правило 1 на 1: ПОБЕДА, если матчап твоего героя против врага +' + WIN_MIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Пара, где меньше ' + nfmt(ds.minGames) + ' игр, контрой не считается.';
-export const EXPLAIN_1V1 = 'На сколько герой играет против него лучше или хуже, чем обычно. Сила самого героя в патче убрана.';
+export const EXPLAIN_1V1 = 'Матчап: насколько герой играет против него лучше обычного. Сила героя в патче убрана.';
+const SCALE = 6; // bar half-width, percent points
 
 export function mount(root, ds) {
   let timer = null;
@@ -57,19 +58,19 @@ export function mount(root, ds) {
     const enemy = ds.hero(enemyId);
     const bar = h('div', { class: 'timer-fill' });
     const secs = h('span', { class: 'timer-secs', text: String(SECONDS) });
+    const head = h('div', { class: 'enemy-card' },
+      portrait(enemy, 'enemy'),
+      h('div', { class: 'enemy-info' },
+        h('div', { class: 'enemy-top' }, h('span', { class: 'enemy-tag', text: 'Враг' }), hname(enemy, 'enemy-name')),
+        h('div', { class: 'enemy-stat' }, 'выигрывает ', h('b', { text: pct1(enemy.w / enemy.n) }), ' ', chip(ds, enemy.n)),
+        h('div', { class: 'timer', role: 'timer', 'aria-label': 'осталось секунд' }, h('div', { class: 'timer-track' }, bar), secs)));
     grid = heroGrid(ds, {
       tab: 'all',
+      head,
       onPick: (id) => finish(enemyId, id, false),
       stateOf: (id) => (id === enemyId ? { disabled: true, tag: 'враг', kind: 'enemy' } : null),
     });
     stage.append(
-      h('div', { class: 'enemy-card' },
-        h('div', { class: 'enemy-tag', text: 'Враг' }),
-        portrait(enemy, 'lg enemy'),
-        h('div', { class: 'enemy-info' },
-          h('div', { class: 'enemy-name', text: enemy.name }),
-          h('div', { class: 'enemy-stat' }, 'выигрывает ', h('b', { text: pct1(enemy.w / enemy.n) }), ' ', chip(ds, enemy.n)),
-          h('div', { class: 'timer' }, h('div', { class: 'timer-track' }, bar), secs))),
       h('p', { class: 'hint', text: 'Кто его контрит? Любой герой, один тап.' }),
       grid.el);
     const t0 = performance.now();
@@ -87,12 +88,14 @@ export function mount(root, ds) {
   function row(m, userId, extraCls = '') {
     const hero = ds.hero(m.id);
     const win = wins1v1(m);
-    return h('li', { class: (m.id === userId ? 'me ' : '') + (win ? 'w' : 'l') + extraCls },
-      h('span', { class: 'six-n', text: m.thin ? '-' : String(m.rank) }),
+    return h('li', { class: 'trow ' + (m.id === userId ? 'me ' : '') + (win ? 'w' : 'l') + extraCls },
+      h('span', { class: 'c-n', text: m.thin ? '-' : String(m.rank) }),
       portrait(hero, 'xs'),
-      h('span', { class: 'six-name' }, hero.name, m.id === userId ? h('small', { text: ' твой выбор' }) : null),
-      h('span', { class: 'six-p' }, h('b', { text: m.thin ? 'не в рейтинге' : 'матчап: ' + signed1(m.pct) }), h('small', { text: facts(m) + ' · ' + tagOf(m) })),
-      h('span', { class: 'six-wl', text: win ? 'W' : 'L' }));
+      h('span', { class: 'c-name' }, hname(hero), m.id === userId ? h('small', { class: 'you-mark', text: 'твой выбор' }) : null,
+        h('small', { class: 'c-tag t-' + (m.thin ? 'thin' : m.flag === 1 ? (m.adv >= 0 ? 'ok' : 'bad') : 'stat'), text: tagOf(m) })),
+      h('span', { class: 'c-val' }, h('b', { class: m.thin ? 'zero' : tone(m.pct), text: m.thin ? '-' : signed1(m.pct) }), m.thin ? null : dbar(m.pct, SCALE)),
+      h('span', { class: 'c-facts' }, m.n ? h('span', { text: pct1(m.wins / m.n) }) : null, h('small', { text: m.n ? gamesOf(m.n) : 'нет игр' })),
+      h('span', { class: 'c-wl', text: win ? 'W' : 'L' }));
   }
 
   function whyText(enemy, user, best, timeout) {
@@ -131,18 +134,25 @@ export function mount(root, ds) {
 
     const top = solid.slice(0, TOP);
     const inTop = user && top.some((m) => m.id === user.id);
-    const list = h('ol', { class: 'six' }, top.map((m) => row(m, userId)), user && !inTop ? row(user, userId, ' rank-gap') : null);
+    const list = h('ol', { class: 'stat-table' }, top.map((m) => row(m, userId)), user && !inTop ? row(user, userId, ' rank-gap') : null);
     const rankLine = user ? h('p', { class: 'rank-line' }, 'Твой выбор: ',
       user.thin ? h('b', { text: 'не в рейтинге' }) : h('b', { text: 'место ' + user.rank + ' из ' + solid.length }),
       user.thin ? ' (у пары мало игр)' : ' (герои, у которых с ним хватает игр)') : null;
 
+    const face = (id, cls, label) => h('div', { class: 'duel-side ' + cls },
+      id != null ? portrait(ds.hero(id), 'duel') : h('div', { class: 'portrait duel empty' }, h('span', { class: 'fallback', text: 'нет пика' })),
+      h('span', { class: 'duel-label', text: label }),
+      id != null ? hname(ds.hero(id), 'duel-name') : h('span', { class: 'duel-name', text: 'время вышло' }));
+    const aside = user && !user.thin ? keyStat('твой матчап', signed(user.shown), tone(user.shown)) : keyStat('лучший матчап', signed(best.shown), 'pos');
     const el = h('section', { class: 'result' },
-      h('div', { class: 'vs-line' }, 'Ты против ', portrait(enemy, 'xs'), h('b', { text: enemy.name })),
-      outcome({ win, bestLine, why: whyText(enemy, user, best, timeout), rule: RULE_1V1(ds) }),
+      h('div', { class: 'duel-head' }, face(userId, 'you', 'ты'), h('span', { class: 'duel-vs', text: 'vs' }), face(enemyId, 'foe', 'враг')),
+      outcome({ win, bestLine, why: whyText(enemy, user, best, timeout), rule: RULE_1V1(ds), aside }),
       h('div', { class: 'next-wrap' }, next),
-      h('section', { class: 'panel' }, h('h3', { text: 'Лучшие контры против ' + enemy.name }),
-        h('p', { class: 'muted small', text: EXPLAIN_1V1 }),
+      h('section', { class: 'panel' },
+        h('div', { class: 'sec-head' }, h('h3', { text: 'Лучшие контры против ' + enemy.name })),
+        h('p', { class: 'sec-sub', text: EXPLAIN_1V1 }),
         rankLine,
+        tableHead([['#', 'c-n'], ['', 'c-face'], ['герой', 'c-name'], ['матчап', 'c-val'], ['винрейт', 'c-facts'], ['', 'c-wl']]),
         list),
       h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
         h('p', { text: 'Матчап: преимущество пары из данных, без силы самих героев в патче, в процентах от ровной игры (50%). Пара: матчи, где оба героя были в игре на разных сторонах. Это не матчап на линии: данных по линиям нет.' }),

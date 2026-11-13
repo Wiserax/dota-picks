@@ -1,5 +1,5 @@
 // Mode 3: Captains Mode against a greedy bot that uses the same model.
-import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp } from './ui.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, dbar, hname, tone } from './ui.js';
 import { estimate, rankCandidates, judge } from './model.js';
 import { plays, positionsOf } from './positions.js';
 import { compositionBlock } from './result.js';
@@ -36,7 +36,10 @@ export function mount(root, ds) {
     if (grid) { grid.destroy(); grid = null; }
     clear(stage).append(h('section', { class: 'panel cm-setup' },
       h('h3', { text: 'Выбери сторону драфта' }),
-      h('p', { class: 'muted', text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага. Пикай и бань любых героев: каждый пик сравнивается с лучшим из всех доступных. Бот пикает и банит жадно по той же модели и закрывает свои позиции 1-5.' }),
+      h('ul', { class: 'facts-list' },
+        h('li', { text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага.' }),
+        h('li', { text: 'Пикай и бань любых героев: каждый пик сравнивается с лучшим из всех доступных.' }),
+        h('li', { text: 'Бот пикает и банит жадно по той же модели и закрывает свои позиции 1-5.' })),
       h('div', { class: 'side-btns' },
         h('button', { class: 'btn primary big', type: 'button', onclick: () => start('F'), text: 'Первый пик' }),
         h('button', { class: 'btn big', type: 'button', onclick: () => start('S'), text: 'Второй пик' })),
@@ -81,7 +84,7 @@ export function mount(root, ds) {
     function teamPanel(label, t, cls) {
       const byPos = new Map(t.picks.map((x) => [x.pos, x.id]));
       return h('div', { class: 'cm-team ' + cls },
-        h('div', { class: 'team-label', text: label }),
+        h('div', { class: 'team-label' }, h('span', { text: label }), h('small', { text: 'баны ' + t.bans.length + '/7' })),
         h('div', { class: 'team-slots' }, ALL.map((p) => h('div', { class: 'slot' + (byPos.has(p) ? '' : ' open') },
           byPos.has(p) ? portrait(ds.hero(byPos.get(p)), 'slot') : h('div', { class: 'portrait slot empty' }, h('span', { class: 'fallback', text: 'поз. ' + p })),
           h('span', { class: 'slot-pos', text: String(p) })))),
@@ -100,7 +103,7 @@ export function mount(root, ds) {
       clear(live);
       if (st.me.picks.length && st.bot.picks.length) {
         const e = estimate(ds, ids(st.me), ids(st.bot));
-        live.append(h('span', { text: 'Шанс твоего драфта сейчас: ' }), h('b', { text: pct(e.p) }));
+        live.append(h('div', { class: 'live-row' }, h('span', { text: 'Шанс твоего драфта сейчас' }), dbar((e.p - 0.5) * 100, 15), h('b', { class: tone(Math.round(e.p * 100) - 50), text: pct(e.p) })));
         const note = rangeNote(ds, e.p);
         if (note) live.append(note);
       }
@@ -211,26 +214,29 @@ export function mount(root, ds) {
     const el = h('section', { class: 'result' },
       h('div', { class: 'cm-final' },
         h('div', { class: 'est-label', text: 'Шанс твоего драфта' }),
-        h('div', { class: 'est-p huge' }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
+        h('div', { class: 'est-p huge ' + (win ? 'pos' : 'neg') }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
+        dbar((est.p - 0.5) * 100, 15, 'big'),
+        h('div', { class: 'est-scale', 'aria-hidden': 'true' }, h('span', { text: '35%' }), h('span', { text: '50%' }), h('span', { text: '65%' })),
         rangeNote(ds, est.p)),
       outcome({ win, bestLine: 'Пики по правилу раунда: ' + pickWins + ' из ' + st.log.length + ' в плюс.', why,
         rule: 'Правило: ПОБЕДА, если шанс твоего драфта 50% или больше. Каждый пик в списке ниже: по правилу раунда (50% или не дальше 3% от лучшего из всех доступных героев).' }),
       h('div', { class: 'draft compact' }, finalTeam('Ты', st.me, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot, 'enemy')),
       h('div', { class: 'next-wrap' }, again),
-      h('section', { class: 'panel' }, h('h3', { text: 'Твои пики' }),
-        h('div', { class: 'pick-log' }, st.log.map((l, i) => h('div', { class: 'log-row ' + (l.j.win ? 'w' : 'l') },
-          h('span', { class: 'log-n', text: String(i + 1) }),
+      h('section', { class: 'panel' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Твои пики' }), h('span', { class: 'sec-note', text: 'шанс на момент пика' })),
+        h('ol', { class: 'stat-table pick-log' }, st.log.map((l, i) => h('li', { class: 'trow log-row ' + (l.j.win ? 'w' : 'l') },
+          h('span', { class: 'c-n', text: String(i + 1) }),
           portrait(ds.hero(l.id), 'xs'),
-          h('span', { class: 'log-name' }, ds.hero(l.id).name, h('small', { text: ' ' + pct(l.est.p) })),
-          h('span', { class: 'log-wl', text: l.j.win ? 'W' : 'L' }),
-          h('span', { class: 'log-best', text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })))),
+          h('span', { class: 'c-name' }, hname(ds.hero(l.id)),
+            h('small', { class: 'c-tag ' + (l.id === l.bestId || l.j.nearBest ? 't-ok' : 't-stat'), text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })),
+          h('span', { class: 'c-val' }, h('b', { class: tone(Math.round(l.est.p * 100) - 50), text: pct(l.est.p) }), dbar((l.est.p - 0.5) * 100, 15)),
+          h('span', { class: 'c-wl', text: l.j.win ? 'W' : 'L' })))),
         h('p', { class: 'muted small', text: 'Шанс на момент пика, по уже выбранным героям. Будущие пики модель не знает.' })),
-      h('section', { class: 'panel why' }, h('h3', { text: 'Ключевые матчапы' }),
+      h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Ключевые матчапы' })),
         keyVs.length ? keyVs.map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' })),
-      h('section', { class: 'panel why' }, h('h3', { text: 'Связки' }),
+      h('section', { class: 'panel why' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Связки' })),
         keyWith.length ? keyWith.map((t) => sideTag(t, pairRow(ds, t))) : h('p', { class: 'muted small', text: 'Нет связок с достаточным числом игр.' })),
       compositionBlock(ds, [{ label: 'Ты', ids: me }, { label: 'Бот', ids: bot }]),
-      h('section', { class: 'panel' }, h('h3', { text: 'Сила героев в брекете' }),
+      h('section', { class: 'panel' }, h('div', { class: 'sec-head' }, h('h3', { text: 'Сила героев в брекете' })),
         h('div', { class: 'base-grid' }, [...me, ...bot].map((id) => baseRow(ds, ds.hero(id))))),
       h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
         h('p', { text: 'Шанс драфта ' + pctNow + '%, 95% интервал ' + range(est.lo, est.hi) + ' (только шум выборки, не ошибка модели).' }),

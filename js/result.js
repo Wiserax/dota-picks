@@ -37,7 +37,7 @@ export function compositionBlock(ds, teams, { before = null, pickId = null } = {
   }
   if (!lines.length) lines.push(sides.length > 1 ? 'У обеих команд есть все роли из списка.' : 'В драфте есть все роли из списка.');
   return h('section', { class: 'panel comp' + (sides.length > 1 ? ' two' : '') },
-    h('h3', { text: 'Состав драфта (по ролям героев, не статистика)' }),
+    h('div', { class: 'sec-head' }, h('h3', { text: 'Состав драфта (по ролям героев, не статистика)' })),
     sides.length > 1 ? h('div', { class: 'comp-row comp-head' }, h('span'), teams.map((t) => h('span', { class: 'comp-team', text: t.label }))) : null,
     h('div', { class: 'comp-grid' }, rows),
     lines.slice(0, 2).map((t) => h('p', { class: 'comp-line', text: t })),

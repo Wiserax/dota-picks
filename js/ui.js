@@ -33,6 +33,9 @@ export const range1 = (lo, hi) => (lo * 100).toFixed(1).replace('.', ',') + '-' 
 export const nfmt = (n) => Number(n).toLocaleString('ru-RU');
 export const pp = (x, signed = true) => (signed && x > 0 ? '+' : '') + x.toFixed(1).replace('.', ',') + ' п.п.';
 export const dec = (x, d = 3) => (x > 0 ? '+' : '') + x.toFixed(d).replace('.', ',');
+// Signed percent with one decimal, e.g. "+4,6%" (presentation only).
+export const signed1 = (x) => { const v = Math.round(x * 10) / 10 || 0; return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; };
+export const signed = (x) => (x > 0 ? '+' : x < 0 ? '-' : '') + Math.abs(x) + '%';
 
 export function plural(n, one, few, many) {
   const m10 = n % 10, m100 = n % 100;
@@ -60,7 +63,7 @@ export function provenance(ds) {
 
 // Stat chip: number of games, full provenance in the tooltip.
 export function chip(ds, n) {
-  return h('span', { class: 'chip', title: provenance(ds) }, h('b', { text: games(n) }));
+  return h('span', { class: 'chip', title: provenance(ds) }, games(n));
 }
 
 export function provLine(ds) {
@@ -68,6 +71,17 @@ export function provLine(ds) {
 }
 
 export const posNote = () => h('p', { class: 'pos-note', text: POS_NOTE });
+
+// Diverging bar around a midline (0 or 50%). v and scale in the same unit (percent points).
+export function dbar(v, scale, cls = '') {
+  const k = Math.max(-1, Math.min(1, (v || 0) / scale));
+  const fillEl = h('i');
+  fillEl.style.width = (Math.abs(k) * 50).toFixed(1) + '%';
+  return h('span', { class: 'dbar ' + (k > 0.001 ? 'pos' : k < -0.001 ? 'neg' : 'zero') + (cls ? ' ' + cls : ''), 'aria-hidden': 'true' }, fillEl);
+}
+// Win rate (0..1) as a bar around 50%.
+export const wrBar = (wr, scale = 8) => dbar((wr - 0.5) * 100, scale, 'wr');
+export const tone = (x) => (x > 0 ? 'pos' : x < 0 ? 'neg' : 'zero');
 
 // Checked range as text, e.g. "27-73%" (from the data, never hardcoded).
 export function calibText(ds) {
@@ -102,6 +116,9 @@ export function portrait(hero, cls = '') {
   return box;
 }
 
+// Hero name that wraps only between words, never inside one.
+export const hname = (hero, cls = '') => h('span', { class: 'hn' + (cls ? ' ' + cls : ''), text: hero.name });
+
 // Big "you play position N" banner.
 export function youBanner(pos, extra) {
   return h('div', { class: 'you-pos' },
@@ -109,8 +126,18 @@ export function youBanner(pos, extra) {
     h('span', { class: 'you-text' }, h('b', { text: 'Ты: ' + posLabel(pos) }), extra ? h('span', { class: 'you-extra', text: extra }) : null));
 }
 
+// Section title with an optional right-hand note.
+export function sectionHead(title, note) {
+  return h('div', { class: 'sec-head' }, h('h3', { text: title }), note ? h('span', { class: 'sec-note', text: note }) : null);
+}
+
+// Column header row for stat tables.
+export function tableHead(cols) {
+  return h('div', { class: 'trow thead', 'aria-hidden': 'true' }, cols.map((c) => h('span', { class: c[1] || '', text: c[0] })));
+}
+
 // ---------- hero search ----------
-function matches(hero, q) {
+export function heroMatches(hero, q) {
   if (!q) return true;
   const name = hero.name.toLowerCase();
   if (name.includes(q) && q.length >= 3) return true;
@@ -118,13 +145,13 @@ function matches(hero, q) {
   return tokens.some((t) => t.startsWith(q));
 }
 
-const TABS = [['all', 'Все', ''], [1, '1', 'керри'], [2, '2', 'мид'], [3, '3', 'оффлейн'], [4, '4', 'четвёрка'], [5, '5', 'пятёрка']];
+const TABS = [['all', 'Все', ''], [1, '1', 'керри'], [2, '2', 'мид'], [3, '3', 'офф'], [4, '4', 'четв.'], [5, '5', 'пят.']];
 const ATTRS = [['', 'Все', 'Все'], ['str', 'Сила', 'Сил'], ['agi', 'Ловкость', 'Лов'], ['int', 'Интеллект', 'Инт'], ['all', 'Универсал', 'Унив']];
 export const PICKER_POS_NOTE = 'позиции: ручная разметка, не статистика';
 
 // Hero picker over ALL heroes: search (English, Russian, slang), attribute filter, optional
 // position tabs (a filter only, never a restriction), big tiles, optional sticky confirm bar.
-// opts: { onPick(id), stateOf(id) -> {disabled, tag, kind}, confirm, verb(hero) -> text, tab: 1..5 | 'all' }
+// opts: { onPick(id), stateOf(id) -> {disabled, tag, kind}, confirm, verb(hero) -> text, tab: 1..5 | 'all', head: Node }
 export function heroGrid(ds, opts) {
   let tab = opts.tab || 'all';
   let attr = '';
@@ -133,11 +160,11 @@ export function heroGrid(ds, opts) {
   const tiles = new Map();
   const search = h('input', {
     class: 'search', type: 'search', placeholder: 'Поиск: Anti-Mage, антимаг, ам', autocomplete: 'off',
-    spellcheck: 'false', 'aria-label': 'Поиск героя',
+    spellcheck: 'false', 'aria-label': 'Поиск героя', enterkeyhint: 'search',
   });
-  const attrsEl = h('div', { class: 'attr-filters', role: 'group', 'aria-label': 'Атрибут' });
+  const attrsEl = h('div', { class: 'seg attr-filters', role: 'group', 'aria-label': 'Атрибут' });
   for (const [id, full, short] of ATTRS) {
-    const b = h('button', { class: 'attr-btn' + (id === '' ? ' on' : ''), type: 'button', 'data-attr': id },
+    const b = h('button', { class: 'seg-btn attr-btn' + (id === '' ? ' on' : ''), type: 'button', 'data-attr': id },
       id ? h('i', { class: 'attr-dot attr-' + id }) : null, h('span', { class: 'lbl-full', text: full }), h('span', { class: 'lbl-short', text: short }));
     b.addEventListener('click', () => {
       attr = id;
@@ -146,9 +173,9 @@ export function heroGrid(ds, opts) {
     });
     attrsEl.append(b);
   }
-  const tabsEl = h('div', { class: 'pos-tabs', role: 'tablist', 'aria-label': 'Позиция (фильтр)' });
+  const tabsEl = h('div', { class: 'seg pos-tabs', role: 'tablist', 'aria-label': 'Позиция (фильтр)' });
   for (const [id, num, label] of TABS) {
-    const b = h('button', { class: 'pos-tab', type: 'button', role: 'tab', 'data-tab': String(id) },
+    const b = h('button', { class: 'seg-btn pos-tab', type: 'button', role: 'tab', 'data-tab': String(id) },
       h('b', { text: num }), label ? h('small', { text: label }) : null);
     b.addEventListener('click', () => setTab(id));
     tabsEl.append(b);
@@ -167,10 +194,11 @@ export function heroGrid(ds, opts) {
     grid.append(t);
   }
   const barImg = h('div', { class: 'bar-face' });
+  const barName = h('span', { class: 'bar-name' });
   const barBtn = h('button', { class: 'btn primary big', type: 'button' });
-  const bar = h('div', { class: 'confirm-bar', hidden: true }, barImg, barBtn);
+  const bar = h('div', { class: 'confirm-bar', hidden: true }, h('div', { class: 'bar-in' }, barImg, barName, barBtn));
   barBtn.addEventListener('click', () => { if (selected != null) { const id = selected; select(null); opts.onPick(id); } });
-  const empty = h('div', { class: 'grid-empty', hidden: true, text: 'Ничего не найдено' });
+  const empty = h('div', { class: 'grid-empty', hidden: true, text: 'Ничего не найдено. Попробуй английское имя или сленг: ам, пудж, шейкер.' });
 
   function select(id) {
     selected = id;
@@ -178,6 +206,7 @@ export function heroGrid(ds, opts) {
     if (id == null) { bar.hidden = true; document.body.classList.remove('has-bar'); return; }
     const hero = ds.hero(id);
     fill(barImg, portrait(hero, 'bar'));
+    barName.textContent = hero.name;
     barBtn.textContent = (opts.verb ? opts.verb(hero) : 'Взять') + ' ' + hero.name;
     bar.hidden = false;
     document.body.classList.add('has-bar');
@@ -195,7 +224,7 @@ export function heroGrid(ds, opts) {
     for (const hero of ds.heroes) {
       const t = tiles.get(hero.id);
       // typing ignores the filters
-      const ok = q ? matches(hero, q) : ((tab === 'all' || positionsOf(hero).includes(tab)) && (!attr || hero.attr === attr));
+      const ok = q ? heroMatches(hero, q) : ((tab === 'all' || positionsOf(hero).includes(tab)) && (!attr || hero.attr === attr));
       t.hidden = !ok;
       if (ok) shown++;
     }
@@ -220,7 +249,9 @@ export function heroGrid(ds, opts) {
 
   search.addEventListener('input', () => { query = search.value; apply(); });
   const el = h('section', { class: 'picker' },
-    h('div', { class: 'picker-bar' }, search, attrsEl, tabsEl, h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })), grid, empty, bar);
+    h('div', { class: 'picker-bar' + (opts.head ? ' with-head' : '') }, opts.head || null, search),
+    h('div', { class: 'filters' }, attrsEl, tabsEl, h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })),
+    grid, empty, bar);
   setTab(tab);
   refresh();
   return {
@@ -234,16 +265,23 @@ export function heroGrid(ds, opts) {
 
 // ---------- outcome ----------
 // Verdict block: ПОБЕДА / ПОРАЖЕНИЕ, the best-pick line, the why line, the rule line.
-export function outcome({ win, title, bestLine, why, rule = RULE_TEXT }) {
+// aside: optional key number shown next to the verdict word (presentation only).
+export function outcome({ win, title, bestLine, why, rule = RULE_TEXT, aside = null }) {
   return h('div', { class: 'outcome ' + (win ? 'win' : 'loss'), role: 'status' },
-    h('div', { class: 'verdict-glow', 'aria-hidden': 'true' }),
-    h('div', { class: 'verdict-word', text: title || (win ? 'Победа' : 'Поражение') }),
+    h('div', { class: 'verdict-band' },
+      h('div', { class: 'verdict-word', text: title || (win ? 'Победа' : 'Поражение') }),
+      aside ? h('div', { class: 'verdict-aside' }, aside) : null),
     bestLine ? h('div', { class: 'best-line', text: bestLine }) : null,
     why ? h('p', { class: 'why-line', text: why }) : null,
     rule ? h('p', { class: 'rule', text: rule }) : null);
 }
 
-// One pair in plain words: both heroes, win rate, games, plain tag.
+// Key number for the verdict band: label over a big signed value.
+export function keyStat(label, value, cls = '') {
+  return h('div', { class: 'key-stat ' + cls }, h('span', { class: 'ks-label', text: label }), h('b', { class: 'ks-val', text: value }));
+}
+
+// One pair as a table row: both portraits, names, plain tag, win rate with a bar, games.
 export function pairRow(ds, t, { detail = false } = {}) {
   const p = t.pair;
   const hx = ds.hero(t.heroes[0]);
@@ -258,11 +296,14 @@ export function pairRow(ds, t, { detail = false } = {}) {
     : 'по статистике';
   const row = h('div', { class: 'pair' + (thin ? ' thin' : '') + (isVs ? ' vs' : ' with') + (helps ? ' helps' : ' hurts') },
     h('div', { class: 'pair-faces' }, portrait(hx, 'sm'), h('span', { class: 'pair-op', text: isVs ? 'vs' : '+' }), portrait(hy, 'sm')),
-    h('div', { class: 'pair-title' }, h('span', null, hx.name, isVs ? ' против ' : ' + ', hy.name)),
-    h('div', { class: 'pair-stats' },
-      h('span', null, isVs ? 'выигрывает ' : 'вместе выигрывают ', h('b', { text: pct1(wr) })),
-      chip(ds, p.n),
-      h('span', { class: 'tag tag-' + (thin ? 'thin' : p.flag === 1 ? 'ok' : 'stat'), text: tag })));
+    h('div', { class: 'pair-main' },
+      h('div', { class: 'pair-title' }, hname(hx), h('span', { class: 'pair-word', text: isVs ? ' против ' : ' + ' }), hname(hy)),
+      h('span', { class: 'tag tag-' + (thin ? 'thin' : p.flag === 1 ? (p.adv >= 0 ? 'ok' : 'bad') : 'stat'), text: tag })),
+    h('div', { class: 'pair-num' },
+      h('span', { class: 'pair-cap', text: isVs ? 'выигрывает' : 'вместе выигрывают' }),
+      h('b', { class: 'pair-wr ' + tone(wr - 0.5), text: pct1(wr) }),
+      wrBar(wr),
+      chip(ds, p.n)));
   if (detail) {
     const [lo, hi] = wilson(p.wins, p.n);
     row.append(h('div', { class: 'pair-detail' },
@@ -274,11 +315,12 @@ export function pairRow(ds, t, { detail = false } = {}) {
 // Hero strength line (win rate in the bracket).
 export function baseRow(ds, hero, detail = false) {
   const [lo, hi] = wilson(hero.w, hero.n);
+  const wr = hero.w / hero.n;
   return h('div', { class: 'base-row' },
     portrait(hero, 'xs'),
-    h('span', { class: 'base-text' }, h('span', { class: 'base-name', text: hero.name }),
-      h('span', { class: 'base-wr' }, 'выигрывает ', h('b', { text: pct1(hero.w / hero.n) }), detail ? ' (95%: ' + range1(lo, hi) + ')' : '')),
-    chip(ds, hero.n));
+    h('span', { class: 'base-text' }, hname(hero, 'base-name'),
+      h('span', { class: 'base-wr' }, 'выигрывает ', h('b', { class: tone(wr - 0.5), text: pct1(wr) }), detail ? ' (95%: ' + range1(lo, hi) + ')' : '')),
+    h('span', { class: 'base-num' }, wrBar(wr, 5), chip(ds, hero.n)));
 }
 
 export function countUp(root) {
