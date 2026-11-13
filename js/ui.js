@@ -119,13 +119,15 @@ function matches(hero, q) {
 }
 
 const TABS = [['all', 'Все', ''], [1, '1', 'керри'], [2, '2', 'мид'], [3, '3', 'оффлейн'], [4, '4', 'четвёрка'], [5, '5', 'пятёрка']];
+const ATTRS = [['', 'Все', 'Все'], ['str', 'Сила', 'Сил'], ['agi', 'Ловкость', 'Лов'], ['int', 'Интеллект', 'Инт'], ['all', 'Универсал', 'Унив']];
+export const PICKER_POS_NOTE = 'позиции: ручная разметка, не статистика';
 
-// Hero picker: position tabs + search (English, Russian, slang), big tiles, sticky confirm bar.
-// opts: { onPick(id), stateOf(id) -> {disabled, tag, kind}, confirm, verb(hero) -> text,
-//         tab: 1..5 | 'all', myPos: 1..5 | null }
+// Hero picker over ALL heroes: search (English, Russian, slang), attribute filter, optional
+// position tabs (a filter only, never a restriction), big tiles, optional sticky confirm bar.
+// opts: { onPick(id), stateOf(id) -> {disabled, tag, kind}, confirm, verb(hero) -> text, tab: 1..5 | 'all' }
 export function heroGrid(ds, opts) {
   let tab = opts.tab || 'all';
-  let myPos = opts.myPos || null;
+  let attr = '';
   let query = '';
   let selected = null;
   const tiles = new Map();
@@ -133,7 +135,18 @@ export function heroGrid(ds, opts) {
     class: 'search', type: 'search', placeholder: 'Поиск: Anti-Mage, антимаг, ам', autocomplete: 'off',
     spellcheck: 'false', 'aria-label': 'Поиск героя',
   });
-  const tabsEl = h('div', { class: 'pos-tabs', role: 'tablist', 'aria-label': 'Позиция' });
+  const attrsEl = h('div', { class: 'attr-filters', role: 'group', 'aria-label': 'Атрибут' });
+  for (const [id, full, short] of ATTRS) {
+    const b = h('button', { class: 'attr-btn' + (id === '' ? ' on' : ''), type: 'button', 'data-attr': id },
+      id ? h('i', { class: 'attr-dot attr-' + id }) : null, h('span', { class: 'lbl-full', text: full }), h('span', { class: 'lbl-short', text: short }));
+    b.addEventListener('click', () => {
+      attr = id;
+      for (const x of attrsEl.children) x.classList.toggle('on', x === b);
+      apply();
+    });
+    attrsEl.append(b);
+  }
+  const tabsEl = h('div', { class: 'pos-tabs', role: 'tablist', 'aria-label': 'Позиция (фильтр)' });
   for (const [id, num, label] of TABS) {
     const b = h('button', { class: 'pos-tab', type: 'button', role: 'tab', 'data-tab': String(id) },
       h('b', { text: num }), label ? h('small', { text: label }) : null);
@@ -143,7 +156,7 @@ export function heroGrid(ds, opts) {
   const grid = h('div', { class: 'grid' });
   for (const hero of ds.heroes) {
     const t = h('button', { class: 'tile', type: 'button', 'data-id': hero.id, 'aria-label': hero.name },
-      portrait(hero), h('span', { class: 'tname', text: hero.name }), h('span', { class: 'ttag' }), h('span', { class: 'toff', text: 'не твоя позиция' }));
+      portrait(hero), h('span', { class: 'tname', text: hero.name }), h('span', { class: 'ttag' }));
     t.addEventListener('click', () => {
       const st = opts.stateOf ? opts.stateOf(hero.id) : null;
       if (st && st.disabled) return;
@@ -172,10 +185,7 @@ export function heroGrid(ds, opts) {
 
   function setTab(id) {
     tab = id;
-    for (const b of tabsEl.children) {
-      b.classList.toggle('on', b.dataset.tab === String(id));
-      b.classList.toggle('mine', b.dataset.tab === String(myPos));
-    }
+    for (const b of tabsEl.children) b.classList.toggle('on', b.dataset.tab === String(id));
     apply();
   }
 
@@ -184,14 +194,14 @@ export function heroGrid(ds, opts) {
     let shown = 0;
     for (const hero of ds.heroes) {
       const t = tiles.get(hero.id);
-      // typing ignores the tab filter
-      const ok = q ? matches(hero, q) : (tab === 'all' || positionsOf(hero).includes(tab));
+      // typing ignores the filters
+      const ok = q ? matches(hero, q) : ((tab === 'all' || positionsOf(hero).includes(tab)) && (!attr || hero.attr === attr));
       t.hidden = !ok;
-      t.classList.toggle('offrole', !!myPos && !positionsOf(hero).includes(myPos));
       if (ok) shown++;
     }
     empty.hidden = shown > 0;
     tabsEl.classList.toggle('muted-tabs', !!q);
+    attrsEl.classList.toggle('muted-tabs', !!q);
   }
 
   function refresh() {
@@ -210,13 +220,12 @@ export function heroGrid(ds, opts) {
 
   search.addEventListener('input', () => { query = search.value; apply(); });
   const el = h('section', { class: 'picker' },
-    h('div', { class: 'picker-bar' }, search, tabsEl), grid, empty, bar);
+    h('div', { class: 'picker-bar' }, search, attrsEl, tabsEl, h('p', { class: 'tabs-note', text: PICKER_POS_NOTE })), grid, empty, bar);
   setTab(tab);
   refresh();
   return {
     el, refresh, select, setTab,
     getTab() { return tab; },
-    setMyPos(p) { myPos = p; setTab(tab); },
     lock(on) { el.classList.toggle('locked', on); if (on) select(null); },
     reset() { search.value = ''; query = ''; select(null); apply(); },
     destroy() { document.body.classList.remove('has-bar'); },

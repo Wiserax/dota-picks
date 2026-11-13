@@ -114,9 +114,9 @@ export function thinPairs(est, id) {
 
 // Verdict rule (owner's decision, 2026-11-13), on the shown whole-percent point estimates:
 // ПОБЕДА if your chance is 50% or more, OR your pick is at most WIN_SLACK points below the
-// best available pick of your position. Otherwise ПОРАЖЕНИЕ. Uncertainty is not part of it.
+// best available pick (of all heroes). Otherwise ПОРАЖЕНИЕ. Uncertainty is not part of it.
 export const WIN_SLACK = 3;
-export const RULE_TEXT = 'Правило: ПОБЕДА, если твой шанс 50% или больше, или твой пик отстаёт от лучшего пика твоей позиции не больше чем на 3%.';
+export const RULE_TEXT = 'Правило: ПОБЕДА, если твой шанс 50% или больше, или твой пик отстаёт от лучшего доступного пика не больше чем на 3%.';
 
 export function judge(userP, bestP) {
   const u = Math.round(userP * 100);

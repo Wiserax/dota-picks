@@ -1,8 +1,10 @@
-// Mode 2: last pick, 4v4 with positions, both last picks blind and simultaneous.
-// The enemy takes the best hero for his missing position given the visible 4v4 (same
-// model); if you took that hero, he takes his next best. Your best pick is the hero of
-// your position that maximizes your chance after the enemy's response, so denying counts.
-import { h, clear, fill, portrait, heroGrid, pct, youBanner, outcome, posNote, posLabel, countUp } from './ui.js';
+// Mode 2: last pick, 4v4, both last picks blind and simultaneous. The open slot is
+// position 1 or 2 on both sides (shown only by the slot numbers). You may pick ANY hero.
+// The enemy takes the best hero that plays his open slot given the visible 4v4 (same
+// model, internal realism); if you took that hero, he takes his next best. Your best pick
+// is the available hero (any position) that maximizes your chance after the enemy's
+// response, so denying counts.
+import { h, clear, fill, portrait, heroGrid, pct, outcome, countUp } from './ui.js';
 import { estimate, rankCandidates, judge } from './model.js';
 import { plays } from './positions.js';
 import { whyLine } from './explain.js';
@@ -71,18 +73,15 @@ export function mount(root, ds) {
     const st = { u, e, allies, enemies, taken: used };
     grid = heroGrid(ds, {
       confirm: true,
-      tab: u,
-      myPos: u,
+      tab: 'all',
       verb: () => 'Взять',
       onPick: (id) => finish(st, id),
       stateOf: (id) => (allies.some((x) => x.id === id) ? { disabled: true, tag: 'союзник', kind: 'ally' }
         : enemies.some((x) => x.id === id) ? { disabled: true, tag: 'враг', kind: 'enemy' } : null),
     });
     stage.append(
-      youBanner(u, 'Команде не хватает позиции ' + u + '. Врагу не хватает: ' + posLabel(e) + '.'),
       board(st),
-      h('p', { class: 'hint', text: 'Последние пики одновременно: враг не видит твой пик, ты не видишь его.' }),
-      posNote(),
+      h('p', { class: 'hint', text: 'Твой последний пик: любой герой. Пики одновременно: враг не видит твой пик, ты не видишь его.' }),
       grid.el);
   }
 
@@ -97,7 +96,7 @@ export function mount(root, ds) {
     const nextE = enemyRank[1] ? enemyRank[1].id : wanted;
     const response = (hid) => (hid === wanted ? nextE : wanted);
     const evalPick = (hid) => ({ id: hid, est: estimate(ds, [...ally4, hid], [...enemy4, response(hid)]) });
-    const ranked = free.filter((x) => plays(x, st.u)).map((x) => evalPick(x.id)).sort((a, b) => b.est.p - a.est.p);
+    const ranked = free.map((x) => evalPick(x.id)).sort((a, b) => b.est.p - a.est.p);
     const best = ranked[0];
     const user = ranked.find((c) => c.id === userId) || evalPick(userId);
     const j = judge(user.est.p, best.est.p);
@@ -110,25 +109,22 @@ export function mount(root, ds) {
       : 'Враг взял ' + ds.hero(wanted).name + ', как и хотел.';
     const why = whyLine(ds, user, best, { nearBest: j.nearBest, wantedId: wanted, nextId: nextE });
     const next = h('button', { class: 'btn primary big next', type: 'button', text: 'Следующий раунд', onclick: round });
-    const offrole = !plays(ds.hero(userId), st.u);
     const el = h('section', { class: 'result' },
       board(st, { userId, enemyLast, reveal: true }),
       h('div', { class: 'after-reveal' },
         h('p', { class: 'deny-line' + (userId === wanted ? ' denied' : ''), text: denyLine }),
         outcome({ win: j.win, bestLine: bestLineText(ds, j, best.id, user.id), why }),
-        duel(ds, user, best, { label: 'шанс команды', pos: st.u }),
-        offrole ? h('p', { class: 'muted small', text: ds.hero(userId).name + ': не твоя позиция. Сравнение идёт с героями позиции ' + st.u + '.' }) : null,
+        duel(ds, user, best, { label: 'шанс команды' }),
         h('div', { class: 'next-wrap' }, next),
         h('section', { class: 'panel why' }, h('h3', { text: 'Что решило' }),
           reasonsBlock(ds, user, 'Твой пик: ' + ds.hero(user.id).name),
           best.id !== user.id ? reasonsBlock(ds, best, 'Лучший: ' + ds.hero(best.id).name) : null),
-        h('section', { class: 'panel alts' }, h('h3', { text: 'Лучшие герои позиции ' + st.u }),
+        h('section', { class: 'panel alts' }, h('h3', { text: 'Лучшие варианты' }),
           h('p', { class: 'muted small', text: 'Шанс команды с учётом ответного пика врага.' }),
           altList(ds, ranked, userId)),
         moreBlock(ds, { user, best, ranked, extra: [
           h('p', { text: 'Враг выбирал по видимым 4 на 4: ' + enemyRank.slice(0, 3).map((r) => ds.hero(r.id).name + ' ' + pct(r.est.p)).join(', ') + ' (его шанс).' }),
-        ] }),
-        posNote()));
+        ] })));
     clear(stage).append(el);
     window.scrollTo({ top: 0 });
     setTimeout(() => countUp(el), 1000);

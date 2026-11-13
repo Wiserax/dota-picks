@@ -1,7 +1,9 @@
 // Editorial hero positions for patch 7.41 (1 carry, 2 mid, 3 offlane, 4 soft support, 5 hard support)
 // plus Russian names and slang for search. This is a HAND-MADE list, not statistics:
 // the match data has no positions. Started from Valve's role tags in meta.json and
-// common pub usage; where unsure the list is inclusive. Keyed by the hero's short name.
+// common pub usage. Strict: a hero keeps a position only if it is a common, normal pub
+// pick there (no niche or occasional flex), so most heroes have 1 or 2 positions and each
+// position has roughly 30-36 heroes. First listed = main position. Keyed by short name.
 
 export const POS_NOTE = 'позиции: ручная разметка, не статистика; статистики по позициям в данных нет';
 
@@ -12,131 +14,131 @@ export const posLabel = (p) => 'позиция ' + p + ', ' + POS_NAMES[p];
 const TABLE = `
 antimage: 1 | антимаг анти-маг ам магина
 axe: 3 | акс топор могул
-bane: 5 4 | бейн бэйн атропос
-bloodseeker: 1 3 | бладсикер блад бс сикер
-crystal_maiden: 5 4 | цм цмка кристал кристалка кристал_мейден рилай
+bane: 5 | бейн бэйн атропос
+bloodseeker: 1 | бладсикер блад бс сикер
+crystal_maiden: 5 | цм цмка кристал кристалка кристал_мейден рилай
 drow_ranger: 1 | дроу дровка тракса
-earthshaker: 4 3 2 | шейкер эс ершейкер землетряс
+earthshaker: 4 3 | шейкер эс ершейкер землетряс
 juggernaut: 1 | джагер джаггернаут джага джаг юрнеро
-mirana: 4 2 | мирана мира
-morphling: 1 2 | морф морфлинг
-nevermore: 2 1 | сф шадоу_финд невермор
+mirana: 4 | мирана мира
+morphling: 1 | морф морфлинг
+nevermore: 2 | сф шадоу_финд невермор
 phantom_lancer: 1 | пл лансер фантом_лансер азвил
 puck: 2 | пак пук
-pudge: 4 3 2 | пудж пуджик мясник
-razor: 3 1 2 | разор рейзор
+pudge: 4 5 | пудж пуджик мясник
+razor: 1 2 3 | разор рейзор
 sand_king: 3 4 | ск сенд_кинг санд_кинг краб
 storm_spirit: 2 | шторм штормспирит рейджор
 sven: 1 | свен
-tiny: 4 2 1 | тини тайни камень
+tiny: 4 2 | тини тайни камень
 vengefulspirit: 5 4 | венга венж венгеф вс шенди
-windrunner: 2 4 | вр виндранер виндраннер ветрянка лиралей
-zuus: 2 5 4 | зевс зеус
+windrunner: 4 2 | вр виндранер виндраннер ветрянка лиралей
+zuus: 2 | зевс зеус
 kunkka: 2 3 | кунка адмирал
-lina: 2 1 4 | лина
+lina: 2 1 | лина
 lion: 4 5 | лион лев
 shadow_shaman: 5 4 | шаман шш рхаста шадоу_шаман
-slardar: 3 4 | слардар
+slardar: 3 | слардар
 tidehunter: 3 | тайд тайдхантер левиафан
 witch_doctor: 5 | вд витч вич_доктор доктор
-lich: 5 4 | лич
-riki: 4 1 | рики
-enigma: 3 4 | энигма
+lich: 5 | лич
+riki: 1 4 | рики
+enigma: 3 | энигма
 tinker: 2 | тинкер
 sniper: 2 1 | снайпер снайп кардел
 necrolyte: 2 3 | некр некрофос некролит
 warlock: 5 | варлок лок
 beastmaster: 3 | бист бистмастер бм рексар
 queenofpain: 2 | квопа квоп акаша королева
-venomancer: 4 5 3 | веном веноманцер
+venomancer: 4 5 | веном веноманцер
 faceless_void: 1 | войд фв фейслес фейслесс_войд
-skeleton_king: 1 3 | вк скелет рейт_кинг король
+skeleton_king: 1 | вк скелет рейт_кинг король
 death_prophet: 2 3 | дп дез_профет
 phantom_assassin: 1 | па фантомка мортред фантом_ассасин
-pugna: 4 2 | пугна
-templar_assassin: 2 1 | та темплар ланая
+pugna: 5 4 | пугна
+templar_assassin: 2 | та темплар ланая
 viper: 2 3 | вайпер випер
 luna: 1 | луна
-dragon_knight: 2 3 1 | дк драгон драгон_кнайт
-dazzle: 5 4 | дазл даззл
-rattletrap: 4 3 | клок клокверк
-leshrac: 2 3 | леш лешрак
-furion: 4 3 1 | профет фурион нп нейчерс_профет
+dragon_knight: 2 3 | дк драгон драгон_кнайт
+dazzle: 5 | дазл даззл
+rattletrap: 4 | клок клокверк
+leshrac: 2 | леш лешрак
+furion: 4 3 | профет фурион нп нейчерс_профет
 life_stealer: 1 | гуля лс лайфстилер найкс
 dark_seer: 3 | дс дарк_сир
-clinkz: 1 4 | клинкз клинкс
-omniknight: 5 4 | омник омни омникнайт
-enchantress: 5 4 | энча энчантресс энчантрес
-huskar: 2 3 | хускар хуск
+clinkz: 1 | клинкз клинкс
+omniknight: 5 | омник омни омникнайт
+enchantress: 5 | энча энчантресс энчантрес
+huskar: 2 | хускар хуск
 night_stalker: 3 | нс найт_сталкер баланар
-broodmother: 2 3 | бруда бруд паучиха
+broodmother: 2 | бруда бруд паучиха
 bounty_hunter: 4 | бх баунти гондар
 weaver: 1 4 | вивер жук
-jakiro: 5 4 | джакиро джак
-batrider: 4 3 2 | бэт бат батрайдер бэтрайдер
+jakiro: 5 | джакиро джак
+batrider: 3 4 | бэт бат батрайдер бэтрайдер
 chen: 5 | чен
 spectre: 1 | спектра спектр
 ancient_apparition: 5 | аа апарат аппарат апарейшн
 doom_bringer: 3 | дум
 ursa: 1 | урса урсик
 spirit_breaker: 4 3 | бара бар спирит_брейкер сб
-gyrocopter: 1 4 | гиро гирокоптер
-alchemist: 1 2 | алхимик алх
+gyrocopter: 1 | гиро гирокоптер
+alchemist: 1 | алхимик алх
 invoker: 2 | инвокер инвок карл
-silencer: 5 4 | сайленсер сайлер
+silencer: 5 | сайленсер сайлер
 obsidian_destroyer: 2 | од аутворлд
 lycan: 1 3 | ликан волк
 brewmaster: 3 | бру брюмастер панда
 shadow_demon: 5 4 | сд шадоу_демон
-lone_druid: 1 2 | друид лд лон_друид сильвестр
-chaos_knight: 1 3 | цк хаос чаос
+lone_druid: 1 | друид лд лон_друид сильвестр
+chaos_knight: 1 | цк хаос чаос
 meepo: 2 | мипо
-treant: 4 5 | трент треант дерево
-ogre_magi: 5 4 | огр огр_маг огрмаг
-undying: 5 4 | андаинг андайинг зомби
+treant: 5 4 | трент треант дерево
+ogre_magi: 5 | огр огр_маг огрмаг
+undying: 5 | андаинг андайинг зомби
 rubick: 4 5 | рубик
-disruptor: 5 4 | дизраптор диз
+disruptor: 5 | дизраптор диз
 nyx_assassin: 4 | никс нюкс
-naga_siren: 1 5 | нага сирена
-keeper_of_the_light: 4 5 2 | котл кипер эзалор
-wisp: 5 4 | висп ио шарик
-visage: 2 4 5 | визаж
+naga_siren: 1 | нага сирена
+keeper_of_the_light: 5 4 | котл кипер эзалор
+wisp: 5 | висп ио шарик
+visage: 2 4 | визаж
 slark: 1 | сларк слак рыба
-medusa: 1 2 | медуза дуза
+medusa: 1 | медуза дуза
 troll_warlord: 1 | тролль трол
 centaur: 3 | кентавр кент цент
-magnataur: 3 4 2 | магнус
+magnataur: 3 | магнус
 shredder: 3 2 | тимбер пила тимберсо
-bristleback: 3 1 | бб бристл бристлбек еж ёж
+bristleback: 3 | бб бристл бристлбек еж ёж
 tusk: 4 | туск таск морж
 skywrath_mage: 4 5 | скай скайрат
-abaddon: 5 4 3 | абаддон абадон аба
-elder_titan: 4 5 | титан ет элдер
+abaddon: 5 | абаддон абадон аба
+elder_titan: 5 | титан ет элдер
 legion_commander: 3 | легион легионка лк тресдин
-techies: 4 5 | течис техис минер
+techies: 4 | течис техис минер
 ember_spirit: 2 | эмбер ксин
 earth_spirit: 4 | ерс эрс эрт каолин
-abyssal_underlord: 3 5 | андерлорд питлорд
+abyssal_underlord: 3 | андерлорд питлорд
 terrorblade: 1 | тб терор терроблейд
 phoenix: 4 5 | феникс
 oracle: 5 | оракл
-winter_wyvern: 5 4 | виверна вв ww винтер
+winter_wyvern: 5 | виверна вв ww винтер
 arc_warden: 1 2 | арк зет арк_варден
-monkey_king: 1 2 4 | мк манки обезьяна
+monkey_king: 1 2 | мк манки обезьяна
 dark_willow: 4 | вилоу виллоу
-pangolier: 3 2 4 | панго панголиер
+pangolier: 2 3 | панго панголиер
 grimstroke: 5 4 | грим гримстрок
 hoodwink: 4 | худвинк белка
 void_spirit: 2 | воид войд_спирит воид_спирит
 snapfire: 4 5 | снапфаер бабка бабуля
 mars: 3 | марс
-ringmaster: 5 4 | рингмастер ринг
-dawnbreaker: 3 4 5 | даунбрейкер вальора
-marci: 4 2 | марси
-primal_beast: 3 4 | праймал прайм праймал_бист
-muerta: 1 2 | муэрта муерта
+ringmaster: 5 | рингмастер ринг
+dawnbreaker: 3 | даунбрейкер вальора
+marci: 4 | марси
+primal_beast: 3 | праймал прайм праймал_бист
+muerta: 1 | муэрта муерта
 kez: 1 2 | кез
-largo: 5 4 | ларго лягушка
+largo: 5 | ларго лягушка
 `;
 
 const MAP = new Map();

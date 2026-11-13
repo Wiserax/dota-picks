@@ -1,5 +1,5 @@
 // Mode 3: Captains Mode against a greedy bot that uses the same model.
-import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, posNote, posLabel } from './ui.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp } from './ui.js';
 import { estimate, rankCandidates, judge } from './model.js';
 import { plays, positionsOf } from './positions.js';
 
@@ -35,12 +35,11 @@ export function mount(root, ds) {
     if (grid) { grid.destroy(); grid = null; }
     clear(stage).append(h('section', { class: 'panel cm-setup' },
       h('h3', { text: 'Выбери сторону драфта' }),
-      h('p', { class: 'muted', text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага. Твои 5 пиков закрывают позиции 1-5. Бот пикает и банит жадно по той же модели и тоже закрывает свои позиции.' }),
+      h('p', { class: 'muted', text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага. Пикай и бань любых героев: каждый пик сравнивается с лучшим из всех доступных. Бот пикает и банит жадно по той же модели и закрывает свои позиции 1-5.' }),
       h('div', { class: 'side-btns' },
         h('button', { class: 'btn primary big', type: 'button', onclick: () => start('F'), text: 'Первый пик' }),
         h('button', { class: 'btn big', type: 'button', onclick: () => start('S'), text: 'Второй пик' })),
-      orderStrip(null, 'F'),
-      posNote()));
+      orderStrip(null, 'F')));
   }
 
   function orderStrip(step, userSide) {
@@ -75,7 +74,8 @@ export function mount(root, ds) {
         return null;
       },
     });
-    clear(stage).append(status, board, live, grid.el, posNote());
+    clear(stage).append(status, board, live, grid.el);
+    let wasMine = false;
 
     function teamPanel(label, t, cls) {
       const byPos = new Map(t.picks.map((x) => [x.pos, x.id]));
@@ -91,13 +91,10 @@ export function mount(root, ds) {
       const cur = curStep();
       const phase = PHASES.find(([a, b]) => st.step >= a && st.step < b);
       const mine = mineNow();
-      const openMine = open(st.me);
       fill(status,
         h('div', { class: 'cm-phase' }, h('span', { text: phase ? phase[2] : 'Драфт завершён' }), h('span', { class: 'muted', text: 'шаг ' + Math.min(st.step + 1, 24) + '/24' })),
         h('div', { class: 'cm-turn ' + (mine ? 'me' : 'bot') + (cur ? ' ' + cur[1] : ''), text: !cur ? '' : mine ? (cur[1] === 'ban' ? 'Твой бан' : 'Твой пик') : (cur[1] === 'ban' ? 'Бот банит...' : 'Бот пикает...') }),
-        orderStrip(st.step, st.userSide),
-        openMine.length ? h('div', { class: 'open-pos' }, h('span', { text: 'Тебе не хватает: ' }),
-          openMine.map((p) => h('button', { class: 'pos-chip', type: 'button', onclick: () => grid.setTab(p), text: p + ' ' + posLabel(p).split(', ')[1] }))) : null);
+        orderStrip(st.step, st.userSide));
       fill(board, teamPanel('Ты', st.me, 'ally'), teamPanel('Бот', st.bot, 'enemy'));
       clear(live);
       if (st.me.picks.length && st.bot.picks.length) {
@@ -108,14 +105,15 @@ export function mount(root, ds) {
       }
       grid.refresh();
       grid.lock(!mine);
-      if (mine && cur[1] === 'pick') { grid.setMyPos(openMine[0]); grid.setTab(openMine[0]); }
-      else if (mine) { grid.setMyPos(null); grid.setTab('all'); }
+      // each of the user's turns opens on "Все"; the position tabs are only a filter
+      if (mine && !wasMine) grid.setTab('all');
+      wasMine = mine;
     }
 
-    // position a pick fills: the open tab, else an open position the hero plays, else the first open one
-    function targetPos(t, heroId, tab) {
+    // slot a pick fills: the first open slot the hero plays (hand-made table), else the first
+    // open slot. For the user this only places the portrait; it never limits or judges the pick.
+    function targetPos(t, heroId) {
       const op = open(t);
-      if (typeof tab === 'number' && op.includes(tab)) return tab;
       const fit = positionsOf(ds.hero(heroId)).find((p) => op.includes(p));
       return fit || op[0];
     }
@@ -131,12 +129,13 @@ export function mount(root, ds) {
       const cur = curStep();
       if (!cur || cur[0] !== st.userSide) return;
       if (cur[1] === 'pick') {
-        const pos = targetPos(st.me, id, grid.getTab());
+        const pos = targetPos(st.me, id);
         const av = available();
-        const ranked = rankCandidates(ds, ids(st.me), ids(st.bot), av.filter((x) => plays(x, pos)).map((x) => x.id));
+        // compared with the best of ALL available heroes, whatever their positions
+        const ranked = rankCandidates(ds, ids(st.me), ids(st.bot), av.map((x) => x.id));
         const mine = ranked.find((r) => r.id === id) || { id, est: estimate(ds, [...ids(st.me), id], ids(st.bot)) };
         const j = judge(mine.est.p, ranked[0].est.p);
-        st.log.push({ id, pos, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, j, offrole: !plays(ds.hero(id), pos) });
+        st.log.push({ id, pos, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, j });
         apply(st.userSide, id, pos);
       } else apply(st.userSide, id);
       advance();
@@ -146,10 +145,15 @@ export function mount(root, ds) {
       const cur = curStep();
       const av = available();
       if (cur[1] === 'pick') {
-        const op = open(st.bot);
+        // Alex 2026-11-13: the last pick is the carry or the mid. The bot keeps position 1 or 2 open
+        // until its final pick: while it has other positions to fill, it does not take its last open core slot.
+        const all = open(st.bot);
+        const cores = all.filter((p) => p <= 2);
+        const op = all.length > 1 && cores.length === 1 ? all.filter((p) => p !== cores[0]) : all;
         const cands = av.filter((x) => op.some((p) => plays(x, p))).map((x) => x.id);
         const id = rankCandidates(ds, ids(st.bot), ids(st.me), cands.length ? cands : av.map((x) => x.id))[0].id;
-        apply(st.userSide === 'F' ? 'S' : 'F', id, targetPos(st.bot, id, null));
+        const fit = positionsOf(ds.hero(id)).find((p) => op.includes(p));
+        apply(st.userSide === 'F' ? 'S' : 'F', id, fit || targetPos(st.bot, id));
       } else {
         // ban the hero that would help the user's team most right now, among his open positions
         const op = open(st.me);
@@ -201,15 +205,14 @@ export function mount(root, ds) {
         h('div', { class: 'est-p huge' }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
         rangeNote(ds, est.p)),
       outcome({ win, bestLine: 'Пики по правилу раунда: ' + pickWins + ' из ' + st.log.length + ' в плюс.', why,
-        rule: 'Правило: ПОБЕДА, если шанс твоего драфта 50% или больше. Каждый пик в списке ниже: по правилу раунда (50% или не дальше 3% от лучшего на эту позицию).' }),
+        rule: 'Правило: ПОБЕДА, если шанс твоего драфта 50% или больше. Каждый пик в списке ниже: по правилу раунда (50% или не дальше 3% от лучшего из всех доступных героев).' }),
       h('div', { class: 'draft compact' }, finalTeam('Ты', st.me, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot, 'enemy')),
       h('div', { class: 'next-wrap' }, again),
       h('section', { class: 'panel' }, h('h3', { text: 'Твои пики' }),
         h('div', { class: 'pick-log' }, st.log.map((l, i) => h('div', { class: 'log-row ' + (l.j.win ? 'w' : 'l') },
           h('span', { class: 'log-n', text: String(i + 1) }),
           portrait(ds.hero(l.id), 'xs'),
-          h('span', { class: 'log-name' }, ds.hero(l.id).name, h('small', { text: ' поз. ' + l.pos + ', ' + pct(l.est.p) }),
-            l.offrole ? h('span', { class: 'offrole-tag', text: 'не твоя позиция' }) : null),
+          h('span', { class: 'log-name' }, ds.hero(l.id).name, h('small', { text: ' ' + pct(l.est.p) })),
           h('span', { class: 'log-wl', text: l.j.win ? 'W' : 'L' }),
           h('span', { class: 'log-best', text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })))),
         h('p', { class: 'muted small', text: 'Шанс на момент пика, по уже выбранным героям. Будущие пики модель не знает.' })),
@@ -225,8 +228,7 @@ export function mount(root, ds) {
         keyVs.map((t) => pairRow(ds, t, { detail: true })),
         thin.length ? h('div', null, h('h4', { text: 'Мало данных: ' + thin.length + ' пар (почти не влияют, не причина вердикта)' }), thin.map((t) => pairRow(ds, t, { detail: true }))) : null,
         h('p', { class: 'muted small', text: 'Порядок пиков в пабах неизвестен, поэтому эффект "последнего пика" модель не измеряет.' }),
-        provLine(ds))),
-      posNote());
+        provLine(ds))));
     clear(stage).append(el);
     window.scrollTo({ top: 0 });
     requestAnimationFrame(() => countUp(el));

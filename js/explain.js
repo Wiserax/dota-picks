@@ -44,7 +44,7 @@ export function whyLine(ds, user, best, { nearBest = false, wantedId = null, nex
   const [p1, p2] = ph;
   if (!p1) {
     return user && (nearBest || user.id === best.id)
-      ? 'Почему: у других героев твоей позиции шансы не выше.'
+      ? 'Почему: у других героев шансы не выше.'
       : 'Почему: по силе героев и парам у ' + name(best.id) + ' в сумме чуть больше шансов.';
   }
   if (!p2) return 'Почему: ' + name(p1.s) + ' ' + p1.t + '.';

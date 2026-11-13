@@ -1,7 +1,6 @@
 // Shared pieces of the result screens (plain language first, details collapsed).
 import { h, pct, range, nfmt, portrait, pairRow, baseRow, rangeNote, provLine } from './ui.js';
 import { decidingPairs, thinPairs, gapNoise } from './model.js';
-import { plays } from './positions.js';
 
 export function bestLineText(ds, j, bestId, userId) {
   if (userId != null && (j.nearBest || userId === bestId)) return 'Лучший пик!';
@@ -9,12 +8,11 @@ export function bestLineText(ds, j, bestId, userId) {
 }
 
 // Two simple cards: your pick and the best pick, whole percents only.
-export function duel(ds, user, best, { label = 'шанс', pos = null } = {}) {
+export function duel(ds, user, best, { label = 'шанс' } = {}) {
   const card = (c, title, cls) => h('div', { class: 'duel-card ' + cls },
     h('div', { class: 'duel-title', text: title }),
     c ? portrait(ds.hero(c.id), 'md') : h('div', { class: 'portrait md empty' }, h('span', { class: 'fallback', text: 'нет пика' })),
-    h('div', { class: 'duel-name' }, c ? ds.hero(c.id).name : 'время вышло',
-      c && pos && !plays(ds.hero(c.id), pos) ? h('span', { class: 'offrole-tag', text: 'не твоя позиция' }) : null),
+    h('div', { class: 'duel-name', text: c ? ds.hero(c.id).name : 'время вышло' }),
     h('div', { class: 'duel-p' }, h('b', { class: 'countup', 'data-to': c ? Math.round(c.est.p * 100) : 0, text: c ? pct(c.est.p) : '-' }), h('small', { text: ' ' + label })),
     c ? rangeNote(ds, c.est.p) : null);
   const same = user && user.id === best.id;
