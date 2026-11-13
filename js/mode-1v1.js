@@ -1,23 +1,34 @@
 // Mode 1: 1 v 1. You see the enemy hero and pick ANY hero against him, one tap, 10 seconds.
-// The verdict compares your pick with the best of all heroes against this enemy.
-// The chance is the win rate of matches where both heroes were in the game on opposite
-// sides (hero strength + pair), not a lane matchup.
-import { h, clear, fill, portrait, chip, pct, pct1, outcome, games, rangeNote, countUp, heroGrid } from './ui.js';
-import { judge } from './model.js';
-import { buildQuiz, sampleEnemy, rankAgainst } from './quiz.js';
-import { whyLine } from './explain.js';
-import { bestLineText, moreBlock, scoreLine } from './result.js';
+// The question is "who counters this hero", not "who is strong": the metric is the pair term
+// only (shrunk matchup advantage, base win rates of both heroes removed), shown as the shift
+// from an even game. Rule (one, printed on screen): ПОБЕДА if your matchup is +1% or better
+// in whole percents, otherwise ПОРАЖЕНИЕ. Thin pairs (flag 2) are never counters.
+// Last pick and Captains Mode keep the full model (hero strength + pairs).
+import { h, clear, fill, portrait, chip, pct1, range1, nfmt, plural, heroGrid, outcome, provLine } from './ui.js';
+import { wilson } from './model.js';
+import { buildQuiz, sampleEnemy, rankCounters, matchup, wins1v1, WIN_MIN } from './quiz.js';
+import { scoreLine } from './result.js';
 
 const SECONDS = 10;
 const TOP = 5;
 const score = { win: 0, loss: 0, streak: 0 };
 
+const signed = (x) => (x > 0 ? '+' : x < 0 ? '-' : '') + Math.abs(x) + '%';
+const signed1 = (x) => { const v = Math.round(x * 10) / 10 || 0; return (v > 0 ? '+' : v < 0 ? '-' : '') + Math.abs(v).toFixed(1).replace('.', ',') + '%'; };
+const gamesOf = (n) => nfmt(n) + ' ' + plural(n, 'игры', 'игр', 'игр');
+const facts = (m) => (m.n ? 'выигрывает ' + pct1(m.wins / m.n) + ' из ' + gamesOf(m.n) : 'пара не встречалась');
+const tagOf = (m) => (m.thin ? 'мало данных' : m.flag === 1 ? (m.adv >= 0 ? 'проверенная контра' : 'проверенно плохой матчап') : 'по статистике');
+const shiftWords = (s) => (s > 0 ? 'на ' + s + '% лучше, чем обычно' : s < 0 ? 'на ' + Math.abs(s) + '% хуже, чем обычно' : 'как обычно, без перевеса');
+
+export const RULE_1V1 = (ds) => 'Правило 1 на 1: ПОБЕДА, если матчап твоего героя против врага +' + WIN_MIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Пара, где меньше ' + nfmt(ds.minGames) + ' игр, контрой не считается.';
+export const EXPLAIN_1V1 = 'На сколько герой играет против него лучше или хуже, чем обычно. Сила самого героя в патче убрана.';
+
 export function mount(root, ds) {
   let timer = null;
   let raf = null;
   let grid = null;
-  let lastEnemy = null;
   let done = false;
+  const recent = [];
   const quiz = buildQuiz(ds);
 
   const scoreEl = h('div', { class: 'score' });
@@ -36,13 +47,13 @@ export function mount(root, ds) {
     if (grid) { grid.destroy(); grid = null; }
     done = false;
     clear(stage);
-    const enemyId = sampleEnemy(ds, quiz, lastEnemy);
+    const enemyId = sampleEnemy(ds, quiz, recent);
     if (enemyId == null) {
       stage.append(h('section', { class: 'panel error' }, h('h2', { text: 'Нет раундов' }),
         h('p', { text: 'В этом брекете нет героев с явными контрпиками для раунда. Выбери другой брекет.' })));
       return;
     }
-    lastEnemy = enemyId;
+    recent.push(enemyId);
     const enemy = ds.hero(enemyId);
     const bar = h('div', { class: 'timer-fill' });
     const secs = h('span', { class: 'timer-secs', text: String(SECONDS) });
@@ -59,7 +70,7 @@ export function mount(root, ds) {
           h('div', { class: 'enemy-name', text: enemy.name }),
           h('div', { class: 'enemy-stat' }, 'выигрывает ', h('b', { text: pct1(enemy.w / enemy.n) }), ' ', chip(ds, enemy.n)),
           h('div', { class: 'timer' }, h('div', { class: 'timer-track' }, bar), secs))),
-      h('p', { class: 'hint', text: 'Кого возьмёшь против него? Любой герой, один тап.' }),
+      h('p', { class: 'hint', text: 'Кто его контрит? Любой герой, один тап.' }),
       grid.el);
     const t0 = performance.now();
     const tick = (t) => {
@@ -73,18 +84,30 @@ export function mount(root, ds) {
     timer = setTimeout(() => finish(enemyId, null, true), SECONDS * 1000);
   }
 
-  function row(c, rank, best, userId, extraCls = '') {
-    const hero = ds.hero(c.id);
-    const pr = c.est.terms.find((t) => t.kind === 'vs');
-    const jj = judge(c.est.p, best.est.p);
-    const tag = !pr ? 'пара не встречалась'
-      : games(pr.pair.n) + (pr.pair.flag === 1 ? (pr.contrib >= 0 ? ' · проверенная контра' : ' · проверенно плохой матчап') : pr.pair.flag === 2 ? ' · мало данных' : ' · по статистике');
-    return h('li', { class: (c.id === userId ? 'me ' : '') + (jj.win ? 'w' : 'l') + extraCls },
-      h('span', { class: 'six-n', text: String(rank) }),
+  function row(m, userId, extraCls = '') {
+    const hero = ds.hero(m.id);
+    const win = wins1v1(m);
+    return h('li', { class: (m.id === userId ? 'me ' : '') + (win ? 'w' : 'l') + extraCls },
+      h('span', { class: 'six-n', text: m.thin ? '-' : String(m.rank) }),
       portrait(hero, 'xs'),
-      h('span', { class: 'six-name' }, hero.name, c.id === userId ? h('small', { text: ' твой выбор' }) : null),
-      h('span', { class: 'six-p' }, h('b', { text: pct(c.est.p) }), h('small', { text: tag }), rangeNote(ds, c.est.p, true)),
-      h('span', { class: 'six-wl', text: jj.win ? 'W' : 'L' }));
+      h('span', { class: 'six-name' }, hero.name, m.id === userId ? h('small', { text: ' твой выбор' }) : null),
+      h('span', { class: 'six-p' }, h('b', { text: m.thin ? 'не в рейтинге' : 'матчап: ' + signed1(m.pct) }), h('small', { text: facts(m) + ' · ' + tagOf(m) })),
+      h('span', { class: 'six-wl', text: win ? 'W' : 'L' }));
+  }
+
+  function whyText(enemy, user, best, timeout) {
+    const vs = (m) => ds.hero(m.id).name + ' против ' + enemy.name;
+    if (timeout || !user) return 'Почему: ' + vs(best) + ' ' + facts(best) + ', это ' + shiftWords(best.shown) + ' у этих двух героев.';
+    if (user.thin) return 'Почему: у пары ' + vs(user) + (user.n ? ' всего ' + gamesOf(user.n) : ' нет игр') + ', порог ' + gamesOf(ds.minGames) + '. По такой выборке матчап не измерить.';
+    return 'Почему: ' + vs(user) + ' ' + facts(user) + ', это ' + shiftWords(user.shown) + ' у этих двух героев.';
+  }
+
+  function detail(m, enemy, title) {
+    const hero = ds.hero(m.id);
+    if (!m.n) return h('p', { text: title + ': ' + hero.name + ' против ' + enemy.name + ': пара не встречалась.' });
+    const [lo, hi] = wilson(m.wins, m.n);
+    return h('p', { text: title + ': ' + hero.name + ' против ' + enemy.name + ' выигрывает ' + pct1(m.wins / m.n) + ' из ' + gamesOf(m.n)
+      + ' (95% интервал ' + range1(lo, hi) + '). Сдвиг ' + (m.adv > 0 ? '+' : '') + m.adv.toFixed(3).replace('.', ',') + ' в лог-шансах после поправки на силу обоих героев и сжатия малых выборок; матчап ' + signed1(m.pct) + '. ' + tagOf(m) + '.' });
   }
 
   function finish(enemyId, userId, timeout) {
@@ -92,40 +115,42 @@ export function mount(root, ds) {
     done = true;
     stopTimer();
     if (grid) { grid.destroy(); grid = null; }
-    const all = rankAgainst(ds, enemyId);
-    const solid = all.filter((c) => c.flag !== 2);
-    const best = solid[0];
-    const top = solid.slice(0, TOP);
-    const user = userId != null ? all.find((c) => c.id === userId) : null;
-    const userRank = user ? all.indexOf(user) + 1 : null;
-    const j = user ? judge(user.est.p, best.est.p) : { win: false, gap: 0, nearBest: false };
-    if (j.win) { score.win++; score.streak++; } else { score.loss++; score.streak = 0; }
-    drawScore();
     const enemy = ds.hero(enemyId);
-    const why = whyLine(ds, user, best, { nearBest: j.nearBest });
-    const bestLine = timeout ? 'Время вышло. Лучший был ' + ds.hero(best.id).name + ': ' + pct(best.est.p)
-      : ((t) => t + (/[!.]$/.test(t) ? ' ' : '. ') + 'Твой шанс: ' + pct(user.est.p) + '.')(bestLineText(ds, j, best.id, user.id));
+    const { solid } = rankCounters(ds, enemyId);
+    const best = solid[0];
+    const user = userId != null ? (solid.find((m) => m.id === userId) || matchup(ds, userId, enemyId)) : null;
+    const win = !!user && wins1v1(user);
+    if (win) { score.win++; score.streak++; } else { score.loss++; score.streak = 0; }
+    drawScore();
+    const isBest = user && !user.thin && user.shown === best.shown;
+    const bestPart = isBest ? 'Лучшая контра!' : 'Лучшая контра: ' + ds.hero(best.id).name + ', ' + signed(best.shown) + '.';
+    const bestLine = timeout ? 'Время вышло. ' + bestPart
+      : user.thin ? 'У этой пары мало игр: контрой не считаем. ' + bestPart
+        : bestPart + ' Твой матчап: ' + signed(user.shown) + '.';
     const next = h('button', { class: 'btn primary big next', type: 'button', text: 'Следующий раунд', onclick: round });
 
-    const inTop = user && top.some((c) => c.id === user.id);
-    const list = h('ol', { class: 'six' }, top.map((c, i) => row(c, i + 1, best, userId)),
-      user && !inTop ? row(user, userRank, best, userId, ' rank-gap') : null);
-    const rankLine = user ? h('p', { class: 'rank-line' }, 'Твой выбор: ', h('b', { text: 'место ' + userRank + ' из ' + all.length }),
-      user.flag === 2 ? ' (у пары мало игр, поэтому в топ она не попадает)' : '') : null;
+    const top = solid.slice(0, TOP);
+    const inTop = user && top.some((m) => m.id === user.id);
+    const list = h('ol', { class: 'six' }, top.map((m) => row(m, userId)), user && !inTop ? row(user, userId, ' rank-gap') : null);
+    const rankLine = user ? h('p', { class: 'rank-line' }, 'Твой выбор: ',
+      user.thin ? h('b', { text: 'не в рейтинге' }) : h('b', { text: 'место ' + user.rank + ' из ' + solid.length }),
+      user.thin ? ' (у пары мало игр)' : ' (герои, у которых с ним хватает игр)') : null;
 
-    const extra = [h('p', { text: 'Шанс здесь: сила героя в этом брекете плюс пара с врагом. Пара: матчи, где оба героя были в игре на разных сторонах. Это не матчап на линии: данных по линиям нет. Лучший и топ-5: только пары, где игр не меньше порога.' })];
     const el = h('section', { class: 'result' },
       h('div', { class: 'vs-line' }, 'Ты против ', portrait(enemy, 'xs'), h('b', { text: enemy.name })),
-      outcome({ win: j.win, bestLine, why }),
+      outcome({ win, bestLine, why: whyText(enemy, user, best, timeout), rule: RULE_1V1(ds) }),
       h('div', { class: 'next-wrap' }, next),
-      h('section', { class: 'panel' }, h('h3', { text: 'Лучшие пики против ' + enemy.name }),
-        h('p', { class: 'muted small', text: 'Шанс против ' + enemy.name + ' и сколько игр было у пары. W и L: что дал бы каждый вариант по правилу.' }),
+      h('section', { class: 'panel' }, h('h3', { text: 'Лучшие контры против ' + enemy.name }),
+        h('p', { class: 'muted small', text: EXPLAIN_1V1 }),
         rankLine,
         list),
-      moreBlock(ds, { user, best, ranked: top, extra }));
+      h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
+        h('p', { text: 'Матчап: преимущество пары из данных, без силы самих героев в патче, в процентах от ровной игры (50%). Пара: матчи, где оба героя были в игре на разных сторонах. Это не матчап на линии: данных по линиям нет.' }),
+        user ? detail(user, enemy, 'Твой пик') : null,
+        !user || user.id !== best.id ? detail(best, enemy, 'Лучшая контра') : null,
+        provLine(ds))));
     clear(stage).append(el);
     window.scrollTo({ top: 0 });
-    requestAnimationFrame(() => countUp(el));
     next.focus({ preventScroll: true });
   }
 

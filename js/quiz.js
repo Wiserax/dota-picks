@@ -1,60 +1,74 @@
-// 1v1 round pool: which enemy heroes make a learnable round. The user picks from ALL heroes,
-// so a round is only fair if the enemy has real counters. Built per bracket at load time.
-// An enemy is valid when, among all heroes with a non-thin pair against him (flag not 2):
-//   best - median >= MIN_EDGE points (whole-percent point estimates),
-//   at least VERIFIED heroes have a verified pair in their favour (flag 1, advantage > 0),
-//   at least LOSE_SHARE of them would lose by the verdict rule (below 50% and more than 3 below best).
-// If a bracket has fewer than MIN_ENEMIES valid enemies, VERIFIED is relaxed to 1.
-// Thin pairs (flag 2) can still be picked and are judged by the same estimate, but never
-// set the best and are never listed in the top 5.
-import { estimatePair, WIN_SLACK } from './model.js';
+// 1v1: "who counters this hero", not "who is strong". The metric is the pair term only:
+// the shrunk matchup advantage of hero X against the enemy from the data (adv, log-odds,
+// base win rates of both heroes already removed), shown as the shift from an even game:
+//   advPct = (sigmoid(adv) - 0.5) * 100
+// Only non-thin pairs (flag not 2) are ranked or can win. Verdict on the whole percent
+// shown on screen: ПОБЕДА if the matchup is +WIN_MIN% or better, otherwise ПОРАЖЕНИЕ.
+//
+// Enemy pool, per bracket at load time: an enemy qualifies if at least MIN_WINNERS heroes
+// win by the rule, at least FLAG1 of those carry flag 1 (verified), and at least half of the
+// non-thin heroes lose. If fewer than MIN_ENEMIES qualify, FLAG1 is relaxed to 1.
+import { sigmoid } from './model.js';
 
-export const MIN_EDGE = 4;
-export const VERIFIED = 3;
-export const VERIFIED_RELAXED = 1;
-export const LOSE_SHARE = 0.25;
+export const WIN_MIN = 1;
+export const MIN_WINNERS = 5;
+export const FLAG1 = 2;
+export const FLAG1_RELAXED = 1;
 export const MIN_ENEMIES = 25;
+export const NO_REPEAT = 10;
 
-// Every hero against one enemy, best first. thin: the pair is under min games or missing.
-export function rankAgainst(ds, enemyId) {
-  const out = [];
+export const advPct = (adv) => (sigmoid(adv) - 0.5) * 100;
+export const shownPct = (x) => Math.round(x) || 0; // whole percent on screen; avoids -0
+export const wins1v1 = (m) => !m.thin && m.shown >= WIN_MIN;
+
+// Matchup of hero x against the enemy, seen from x.
+export function matchup(ds, x, enemyId) {
+  const pr = ds.vsPair(x, enemyId);
+  const adv = pr ? pr.adv : 0;
+  const pct = advPct(adv);
+  return {
+    id: x, pair: pr, adv, pct, shown: shownPct(pct),
+    n: pr ? pr.n : 0, wins: pr ? pr.wins : 0, flag: pr ? pr.flag : 2, thin: !pr || pr.flag === 2,
+  };
+}
+
+// solid: non-thin heroes, best counter first (each with rank). thin: the rest.
+export function rankCounters(ds, enemyId) {
+  const solid = [];
+  const thin = [];
   for (const h of ds.heroes) {
     if (h.id === enemyId) continue;
-    const est = estimatePair(ds, [h.id], [enemyId]);
-    const pr = ds.vsPair(h.id, enemyId);
-    out.push({ id: h.id, est, pct: Math.round(est.p * 100), flag: pr ? pr.flag : 2, adv: pr ? pr.adv : 0, n: pr ? pr.n : 0 });
+    const m = matchup(ds, h.id, enemyId);
+    (m.thin ? thin : solid).push(m);
   }
-  return out.sort((a, b) => b.est.p - a.est.p);
+  solid.sort((a, b) => b.adv - a.adv);
+  solid.forEach((m, i) => { m.rank = i + 1; });
+  return { solid, thin };
 }
 
 function enemyStats(ds, enemyId) {
-  const all = rankAgainst(ds, enemyId);
-  const solid = all.filter((x) => x.flag !== 2);
-  if (solid.length < 6) return null;
-  const best = solid[0].pct;
-  const pcts = solid.map((x) => x.pct);
-  const m = pcts.length;
-  const median = m % 2 ? pcts[(m - 1) / 2] : (pcts[m / 2 - 1] + pcts[m / 2]) / 2;
-  const verified = solid.filter((x) => x.flag === 1 && x.adv > 0).length;
-  const losers = solid.filter((x) => x.pct < 50 && best - x.pct > WIN_SLACK).length;
-  return { edge: best - median, verified, loseShare: losers / m };
+  const { solid } = rankCounters(ds, enemyId);
+  const winners = solid.filter(wins1v1);
+  return { winners: winners.length, flag1: winners.filter((m) => m.flag === 1).length, losers: solid.length - winners.length, solid: solid.length };
 }
 
 export function buildQuiz(ds) {
   if (ds._quiz) return ds._quiz;
-  const stats = ds.heroes.map((h) => ({ id: h.id, s: enemyStats(ds, h.id) })).filter((x) => x.s);
-  const pass = (need) => stats.filter(({ s }) => s.edge >= MIN_EDGE && s.verified >= need && s.loseShare >= LOSE_SHARE).map((x) => x.id);
-  let verified = VERIFIED;
-  let enemies = pass(verified);
-  if (enemies.length < MIN_ENEMIES) { verified = VERIFIED_RELAXED; enemies = pass(verified); }
-  ds._quiz = { enemies, verified, relaxed: verified !== VERIFIED };
+  const stats = ds.heroes.map((h) => ({ id: h.id, s: enemyStats(ds, h.id) }));
+  const pass = (need) => stats.filter(({ s }) => s.solid > 0 && s.winners >= MIN_WINNERS && s.flag1 >= need && s.losers >= s.solid / 2).map((x) => x.id);
+  let flag1 = FLAG1;
+  let enemies = pass(flag1);
+  if (enemies.length < MIN_ENEMIES) { flag1 = FLAG1_RELAXED; enemies = pass(flag1); }
+  ds._quiz = { enemies, flag1, relaxed: flag1 !== FLAG1 };
   return ds._quiz;
 }
 
-// Enemy for the next round, weighted by pick rate (games in the bracket), not the last one.
-export function sampleEnemy(ds, quiz, lastEnemy = null, rng = Math.random) {
-  const pool = quiz.enemies.filter((id) => id !== lastEnemy).map((id) => ds.hero(id));
-  if (!pool.length) return null;
+// Enemy for the next round, weighted by pick rate (games in the bracket), never one of the
+// last NO_REPEAT enemies (fewer if the pool is that small).
+export function sampleEnemy(ds, quiz, recent = [], rng = Math.random) {
+  if (!quiz.enemies.length) return null;
+  const block = new Set(recent.slice(-Math.min(NO_REPEAT, quiz.enemies.length - 1)));
+  const pool = quiz.enemies.filter((id) => !block.has(id)).map((id) => ds.hero(id));
   const total = pool.reduce((s, h) => s + h.n, 0);
   let r = rng() * total;
   for (const h of pool) { r -= h.n; if (r <= 0) return h.id; }
