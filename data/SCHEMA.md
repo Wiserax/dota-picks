@@ -109,3 +109,5 @@ Real matches for the last-pick mode (`pipeline/drafts.py`).
 - Same filters as the statistics; only the held-out days, which are in no pair table.
 - Hero order inside a team is the order OpenDota stores; it says nothing about positions.
 - Sorted by match_id; each file under 250 KB.
+
+positions.json, public mid blend (since 2026-11-13): `source` is `opendota_pro_plus_pub_lanes`. Per hero two optional fields: `pub_mid_share` (mid-lane share in OpenDota /scenarios/laneRoles, parsed public matches of the last 4 weeks, any mode and rank) and `added: [2]` when position 2 was added from it (share at least 30% over at least 500 lane games). Added positions are appended at the end of `pos`; pro positions are never removed. Public side lanes cannot tell a core from a support, so only position 2 is ever added.
