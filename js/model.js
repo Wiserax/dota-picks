@@ -114,7 +114,7 @@ export function draftFit(ds, id, allies, enemies) {
   const pct = fitPct(z);
   return { z, pct, shown: Math.round(pct) || 0, vsPct: fitPct(zVs), withPct: fitPct(zWith), terms };
 }
-export const FIT_WIN = 2;
+export const FIT_WIN = 3;
 export const RULE_LAST = 'Правило: ПОБЕДА, если вклад твоего героя в драфт +' + FIT_WIN + '% или лучше (в целых процентах, как на экране). Иначе ПОРАЖЕНИЕ. Сила самих героев в патче сюда не входит.';
 export const fitWins = (f) => f.shown >= FIT_WIN;
 

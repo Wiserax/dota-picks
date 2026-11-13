@@ -9,13 +9,15 @@ Written by `pipeline/build.py`. The brief's schema holds exactly; the files only
   "patch": "7.41f",
   "patch_start": "2026-09-15",
   "source": "OpenDota public matches (api.opendota.com/explorer)",
-  "fetched_at": "2026-11-12T23:23:46Z",        // UTC, latest fetch among all raw files used
-  "window": {"from": "2026-11-05", "to": "2026-11-10"},   // UTC days of the pair tables
-  "holdout_day": "2026-11-11",                 // extra: day used only to fit and score the 5v5 model
+  "fetched_at": "2026-11-13T09:06:05Z",        // UTC, latest fetch among all raw files used
+  "window": {"from": "2026-09-15", "to": "2026-11-10"},   // UTC days of the pair tables (first day starts 07:00 UTC)
+  "days_used": 34,                             // extra: complete UTC days inside the window
+  "missing_days": ["2026-10-10", ...],         // extra: days in the window NOT in the data (fetch incomplete)
+  "holdout_day": "2026-11-11, 2026-11-12",     // extra: day(s) used only to fit and score the 5v5 model
   "filters": "<plain text>",
   "min_games": 500,
   "fdr_q": 0.1,                                // extra: Benjamini-Hochberg level
-  "brackets": [{"id": "b1", "label": "Herald-Crusader", "matches": 294286}, ...],   // matches in the window
+  "brackets": [{"id": "b1", "label": "Herald-Crusader", "matches": 2160302}, ...],   // matches in the window
   "heroes": [{"id": 1, "name": "antimage", "localized_name": "Anti-Mage", "primary_attr": "agi", "roles": [...]}, ...]
 }
 ```
@@ -30,8 +32,9 @@ Written by `pipeline/build.py`. The brief's schema holds exactly; the files only
   "label": "Legend",                          // extra
   "patch": "7.41f",                           // extra
   "window": {"from": ..., "to": ...},         // extra
-  "matches": 667160,
-  "radiant_wins": 352148,                     // extra
+  "days_used": .., "missing_days": [...],     // extra, as in meta.json
+  "matches": 3722567,
+  "radiant_wins": ..,                     // extra
   "heroes": {"<id>": {"n": picks, "w": wins, "base": logit(w / n)}},
   "vs":   [[a, b, n, wins_of_a, adv_shrunk, flag], ...],   // a < b, every pair seen at least once
   "with": [[a, b, n, wins, syn_shrunk, flag], ...],        // a < b, same team

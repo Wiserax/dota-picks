@@ -35,7 +35,10 @@ export function mount(root, ds) {
       h('dl', { class: 'facts' },
         fact('Источник', meta.source || 'OpenDota'),
         fact('Патч', ds.patch + (meta.patch_start ? ', с ' + fdate(meta.patch_start) : '')),
-        fact('Окно данных', (win.from ? fdate(win.from) : '?') + ' - ' + (win.to ? fdate(win.to) : '?')),
+        fact('Окно данных', (win.from ? fdate(win.from) : '?') + ' - ' + (win.to ? fdate(win.to) : '?')
+          + (Array.isArray(meta.missing_days) && meta.missing_days.length
+            ? '. В выборке ' + meta.days_used + ' дн., ещё ' + meta.missing_days.length + ' дн. не загружены (OpenDota не отдал): их матчей в числах нет'
+            : '')),
         fact('Загружено', fdate(meta.fetched_at)),
         fact('Брекет', ds.bracketLabel + ', ' + nfmt(ds.matches) + ' матчей'),
         fact('Порог "мало данных"', 'меньше ' + nfmt(ds.minGames) + ' игр на пару')),
