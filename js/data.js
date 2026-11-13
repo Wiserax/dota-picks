@@ -1,7 +1,7 @@
 // Data loading. Real data lives in data/ (filled by the pipeline). The dev fixture in
 // dev-fixture/ is used only with ?fixture=1 and is never the default.
 
-export const FIXTURE = new URLSearchParams(location.search).get('fixture') === '1';
+export const FIXTURE = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fixture') === '1';
 const BASE = FIXTURE ? 'dev-fixture/' : 'data/';
 
 export class DataError extends Error {

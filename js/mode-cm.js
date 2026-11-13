@@ -1,7 +1,7 @@
 // Mode 3: Captains Mode against a greedy bot that uses the same model.
-import { h, clear, portrait, heroGrid, pct, range, pp, rangeNote, verdictBanner, pairRow, baseRow, provLine, countUp } from './ui.js';
-import { estimate, rankCandidates, draftVerdict } from './model.js';
-import { modelNote } from './result.js';
+import { h, clear, fill, portrait, heroGrid, pct, range, pp, rangeNote, outcome, pairRow, baseRow, provLine, countUp, posNote, posLabel } from './ui.js';
+import { estimate, rankCandidates, judge } from './model.js';
+import { plays, positionsOf } from './positions.js';
 
 // Captains Mode draft order for patch 7.41 (F = team with the first pick, S = second pick).
 // Source: Valve's official patch notes (dota2.com datafeed, read 2026-11-13).
@@ -23,20 +23,24 @@ export const CM_ORDER = [
 ];
 const PHASES = [[0, 7, 'Баны, фаза 1'], [7, 9, 'Пики, фаза 1'], [9, 12, 'Баны, фаза 2'], [12, 18, 'Пики, фаза 2'], [18, 22, 'Баны, фаза 3'], [22, 24, 'Пики, фаза 3']];
 const BOT_DELAY = 650;
+const ALL = [1, 2, 3, 4, 5];
 
 export function mount(root, ds) {
   let timer = null;
+  let grid = null;
   const stage = h('div', { class: 'stage' });
   root.append(h('section', { class: 'mode-head' }, h('h2', { text: 'Captains Mode' }), h('div', { class: 'score muted small', text: 'против бота' })), stage);
 
   function setup() {
+    if (grid) { grid.destroy(); grid = null; }
     clear(stage).append(h('section', { class: 'panel cm-setup' },
       h('h3', { text: 'Выбери сторону драфта' }),
-      h('p', { class: 'muted', text: 'Порядок как в Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага. Бот банит и пикает жадно по той же модели: каждый раз берёт героя с лучшей оценкой на текущий момент.' }),
+      h('p', { class: 'muted', text: 'Порядок Captains Mode 7.41: 7 банов и 5 пиков на команду, 24 шага. Твои 5 пиков закрывают позиции 1-5. Бот пикает и банит жадно по той же модели и тоже закрывает свои позиции.' }),
       h('div', { class: 'side-btns' },
         h('button', { class: 'btn primary big', type: 'button', onclick: () => start('F'), text: 'Первый пик' }),
         h('button', { class: 'btn big', type: 'button', onclick: () => start('S'), text: 'Второй пик' })),
-      orderStrip(null, 'F')));
+      orderStrip(null, 'F'),
+      posNote()));
   }
 
   function orderStrip(step, userSide) {
@@ -49,149 +53,180 @@ export function mount(root, ds) {
 
   function start(userSide) {
     const st = { userSide, step: 0, me: { picks: [], bans: [] }, bot: { picks: [], bans: [] }, log: [] };
-    const used = () => new Set([...st.me.picks, ...st.me.bans, ...st.bot.picks, ...st.bot.bans]);
-    const available = () => { const u = used(); return ds.heroes.map((x) => x.id).filter((id) => !u.has(id)); };
+    const ids = (t) => t.picks.map((x) => x.id);
+    const open = (t) => ALL.filter((p) => !t.picks.some((x) => x.pos === p));
+    const used = () => new Set([...ids(st.me), ...st.me.bans, ...ids(st.bot), ...st.bot.bans]);
+    const available = () => { const u = used(); return ds.heroes.filter((x) => !u.has(x.id)); };
+    const curStep = () => CM_ORDER[st.step];
+    const mineNow = () => curStep() && curStep()[0] === st.userSide;
 
     const board = h('div', { class: 'cm-board' });
     const status = h('div', { class: 'cm-status' });
     const live = h('div', { class: 'cm-live' });
-    const grid = heroGrid(ds, {
+    grid = heroGrid(ds, {
       confirm: true,
-      confirmLabel: (hero) => (CM_ORDER[st.step] && CM_ORDER[st.step][1] === 'ban' ? 'Забанить ' : 'Пикнуть ') + hero.name,
+      tab: 'all',
+      verb: () => (curStep() && curStep()[1] === 'ban' ? 'Забанить' : 'Взять'),
       onPick: (id) => userAct(id),
       stateOf: (id) => {
-        if (st.me.picks.includes(id)) return { disabled: true, tag: 'твой', kind: 'ally' };
-        if (st.bot.picks.includes(id)) return { disabled: true, tag: 'бот', kind: 'enemy' };
+        if (st.me.picks.some((x) => x.id === id)) return { disabled: true, tag: 'твой', kind: 'ally' };
+        if (st.bot.picks.some((x) => x.id === id)) return { disabled: true, tag: 'бот', kind: 'enemy' };
         if (st.me.bans.includes(id) || st.bot.bans.includes(id)) return { disabled: true, tag: 'бан', kind: 'ban' };
         return null;
       },
     });
-    clear(stage).append(status, board, live, grid.el);
+    clear(stage).append(status, board, live, grid.el, posNote());
 
     function teamPanel(label, t, cls) {
+      const byPos = new Map(t.picks.map((x) => [x.pos, x.id]));
       return h('div', { class: 'cm-team ' + cls },
         h('div', { class: 'team-label', text: label }),
-        h('div', { class: 'team-slots' }, [0, 1, 2, 3, 4].map((i) => t.picks[i] != null ? portrait(ds.hero(t.picks[i]), 'slot') : h('div', { class: 'portrait slot empty' }))),
+        h('div', { class: 'team-slots' }, ALL.map((p) => h('div', { class: 'slot' + (byPos.has(p) ? '' : ' open') },
+          byPos.has(p) ? portrait(ds.hero(byPos.get(p)), 'slot') : h('div', { class: 'portrait slot empty' }, h('span', { class: 'fallback', text: 'поз. ' + p })),
+          h('span', { class: 'slot-pos', text: String(p) })))),
         h('div', { class: 'bans' }, [0, 1, 2, 3, 4, 5, 6].map((i) => t.bans[i] != null ? portrait(ds.hero(t.bans[i]), 'ban') : h('div', { class: 'portrait ban empty' }))));
     }
 
     function draw() {
-      const cur = CM_ORDER[st.step];
+      const cur = curStep();
       const phase = PHASES.find(([a, b]) => st.step >= a && st.step < b);
-      const mine = cur && cur[0] === st.userSide;
-      clear(status).append(
+      const mine = mineNow();
+      const openMine = open(st.me);
+      fill(status,
         h('div', { class: 'cm-phase' }, h('span', { text: phase ? phase[2] : 'Драфт завершён' }), h('span', { class: 'muted', text: 'шаг ' + Math.min(st.step + 1, 24) + '/24' })),
         h('div', { class: 'cm-turn ' + (mine ? 'me' : 'bot') + (cur ? ' ' + cur[1] : ''), text: !cur ? '' : mine ? (cur[1] === 'ban' ? 'Твой бан' : 'Твой пик') : (cur[1] === 'ban' ? 'Бот банит...' : 'Бот пикает...') }),
-        orderStrip(st.step, st.userSide));
-      clear(board).append(teamPanel('Ты', st.me, 'ally'), teamPanel('Бот', st.bot, 'enemy'));
+        orderStrip(st.step, st.userSide),
+        openMine.length ? h('div', { class: 'open-pos' }, h('span', { text: 'Тебе не хватает: ' }),
+          openMine.map((p) => h('button', { class: 'pos-chip', type: 'button', onclick: () => grid.setTab(p), text: p + ' ' + posLabel(p).split(', ')[1] }))) : null);
+      fill(board, teamPanel('Ты', st.me, 'ally'), teamPanel('Бот', st.bot, 'enemy'));
       clear(live);
       if (st.me.picks.length && st.bot.picks.length) {
-        const e = estimate(ds, st.me.picks, st.bot.picks);
-        live.append(h('span', { text: 'Текущая оценка твоей команды: ' }), h('b', { text: pct(e.p) }), ' (' + range(e.lo, e.hi) + ')',
-          h('span', { class: 'muted', text: ' по ' + st.me.picks.length + 'x' + st.bot.picks.length + ' героям' }));
+        const e = estimate(ds, ids(st.me), ids(st.bot));
+        live.append(h('span', { text: 'Шанс твоего драфта сейчас: ' }), h('b', { text: pct(e.p) }));
         const note = rangeNote(ds, e.p);
         if (note) live.append(note);
       }
       grid.refresh();
       grid.lock(!mine);
+      if (mine && cur[1] === 'pick') { grid.setMyPos(openMine[0]); grid.setTab(openMine[0]); }
+      else if (mine) { grid.setMyPos(null); grid.setTab('all'); }
     }
 
-    function apply(side, id) {
-      const [, kind] = CM_ORDER[st.step];
+    // position a pick fills: the open tab, else an open position the hero plays, else the first open one
+    function targetPos(t, heroId, tab) {
+      const op = open(t);
+      if (typeof tab === 'number' && op.includes(tab)) return tab;
+      const fit = positionsOf(ds.hero(heroId)).find((p) => op.includes(p));
+      return fit || op[0];
+    }
+
+    function apply(side, id, pos) {
+      const [, kind] = curStep();
       const t = side === st.userSide ? st.me : st.bot;
-      (kind === 'ban' ? t.bans : t.picks).push(id);
+      if (kind === 'ban') t.bans.push(id); else t.picks.push({ id, pos });
       st.step++;
     }
 
     function userAct(id) {
-      const cur = CM_ORDER[st.step];
+      const cur = curStep();
       if (!cur || cur[0] !== st.userSide) return;
       if (cur[1] === 'pick') {
-        const ranked = rankCandidates(ds, st.me.picks, st.bot.picks, available());
-        const mine = ranked.find((r) => r.id === id);
-        st.log.push({ id, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, rank: ranked.indexOf(mine) + 1, of: ranked.length });
-      }
-      apply(st.userSide, id);
+        const pos = targetPos(st.me, id, grid.getTab());
+        const av = available();
+        const ranked = rankCandidates(ds, ids(st.me), ids(st.bot), av.filter((x) => plays(x, pos)).map((x) => x.id));
+        const mine = ranked.find((r) => r.id === id) || { id, est: estimate(ds, [...ids(st.me), id], ids(st.bot)) };
+        const j = judge(mine.est.p, ranked[0].est.p);
+        st.log.push({ id, pos, est: mine.est, bestId: ranked[0].id, bestEst: ranked[0].est, j, offrole: !plays(ds.hero(id), pos) });
+        apply(st.userSide, id, pos);
+      } else apply(st.userSide, id);
       advance();
     }
 
     function botAct() {
-      const cur = CM_ORDER[st.step];
+      const cur = curStep();
       const av = available();
-      let id;
       if (cur[1] === 'pick') {
-        id = rankCandidates(ds, st.bot.picks, st.me.picks, av)[0].id;
+        const op = open(st.bot);
+        const cands = av.filter((x) => op.some((p) => plays(x, p))).map((x) => x.id);
+        const id = rankCandidates(ds, ids(st.bot), ids(st.me), cands.length ? cands : av.map((x) => x.id))[0].id;
+        apply(st.userSide === 'F' ? 'S' : 'F', id, targetPos(st.bot, id, null));
       } else {
-        // ban the hero that would help the user's team most right now
-        id = rankCandidates(ds, st.me.picks, st.bot.picks, av)[0].id;
+        // ban the hero that would help the user's team most right now, among his open positions
+        const op = open(st.me);
+        const cands = av.filter((x) => op.some((p) => plays(x, p))).map((x) => x.id);
+        const id = rankCandidates(ds, ids(st.me), ids(st.bot), cands.length ? cands : av.map((x) => x.id))[0].id;
+        apply(st.userSide === 'F' ? 'S' : 'F', id);
       }
-      apply(st.userSide === 'F' ? 'S' : 'F', id);
       advance();
     }
 
     function advance() {
       if (st.step >= CM_ORDER.length) { draw(); finish(st); return; }
       draw();
-      if (CM_ORDER[st.step][0] !== st.userSide) timer = setTimeout(botAct, BOT_DELAY);
+      if (!mineNow()) timer = setTimeout(botAct, BOT_DELAY);
     }
 
     advance();
   }
 
   function finish(st) {
-    const est = estimate(ds, st.me.picks, st.bot.picks);
-    const v = draftVerdict(est);
-    const vsTerms = est.terms.filter((t) => t.kind === 'vs');
-    const withTerms = est.terms.filter((t) => t.kind === 'with');
-    const byAbs = (a, b) => Math.abs(b.contrib) - Math.abs(a.contrib);
-    const keyVs = vsTerms.filter((t) => t.pair.flag !== 2).sort(byAbs).slice(0, 5);
-    const keyWith = withTerms.filter((t) => t.pair.flag !== 2).sort(byAbs).slice(0, 4);
-    const thin = est.terms.filter((t) => t.kind !== 'base' && t.pair.flag === 2);
-    const baseSum = est.terms.filter((t) => t.kind === 'base').reduce((s, t) => s + t.contrib, 0);
-    const pairSum = est.terms.filter((t) => t.kind === 'vs').reduce((s, t) => s + t.contrib, 0);
-    const synSum = est.terms.filter((t) => t.kind === 'with').reduce((s, t) => s + t.contrib, 0);
+    if (grid) { grid.destroy(); grid = null; }
+    const me = st.me.picks.map((x) => x.id);
+    const bot = st.bot.picks.map((x) => x.id);
+    const est = estimate(ds, me, bot);
+    const pctNow = Math.round(est.p * 100);
+    const win = pctNow >= 50;
+    const sumOf = (kind) => est.terms.filter((t) => t.kind === kind).reduce((s, t) => s + t.contrib, 0);
     const toPP = (part) => (est.p - 1 / (1 + Math.exp(-(est.z - part)))) * 100;
+    const parts = [
+      { k: 'base', v: toPP(sumOf('base')), pos: 'твои герои сильнее в этом патче', neg: 'герои бота сильнее в этом патче' },
+      { k: 'vs', v: toPP(sumOf('vs')), pos: 'твои герои хорошо стоят против героев бота', neg: 'герои бота хорошо стоят против твоих' },
+      { k: 'with', v: toPP(sumOf('with')), pos: 'твои герои лучше сочетаются друг с другом', neg: 'герои бота лучше сочетаются друг с другом' },
+    ].sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+    const byAbs = (a, b) => Math.abs(b.contrib) - Math.abs(a.contrib);
+    const keyVs = est.terms.filter((t) => t.kind === 'vs' && t.pair.flag !== 2).sort(byAbs).slice(0, 5);
+    const keyWith = est.terms.filter((t) => t.kind === 'with' && t.pair.flag !== 2).sort(byAbs).slice(0, 4);
+    const thin = est.terms.filter((t) => t.kind !== 'base' && t.pair.flag === 2);
+    const top = keyVs[0];
+    const why = 'Почему: ' + (parts[0].v >= 0 ? parts[0].pos : parts[0].neg)
+      + (top ? '; самая важная пара: ' + ds.hero(top.heroes[0]).name + ' против ' + ds.hero(top.heroes[1]).name : '') + '.';
+    const pickWins = st.log.filter((l) => l.j.win).length;
     const again = h('button', { class: 'btn primary big next', type: 'button', text: 'Новый драфт', onclick: setup });
+    const finalTeam = (label, t, cls) => h('div', { class: 'team ' + cls }, h('div', { class: 'team-label', text: label }),
+      h('div', { class: 'team-slots' }, [...t.picks].sort((a, b) => a.pos - b.pos).map((x) => h('div', { class: 'slot' }, portrait(ds.hero(x.id), 'slot'), h('span', { class: 'slot-pos', text: String(x.pos) })))));
 
     const el = h('section', { class: 'result' },
-      h('div', { class: 'result-head' },
-        verdictBanner(v),
-        h('div', { class: 'cm-final' },
-          h('div', { class: 'est-label', text: 'Оценка победы твоей команды' }),
-          h('div', { class: 'est-p huge' }, h('b', { class: 'countup', 'data-to': Math.round(est.p * 100), text: pct(est.p) })),
-          h('div', { class: 'est-ci', text: '95% интервал ' + range(est.lo, est.hi) }),
-          rangeNote(ds, est.p),
-          h('div', { class: 'split' },
-            h('span', null, 'сила героев ', h('b', { text: pp(toPP(baseSum)) })),
-            h('span', null, 'матчапы ', h('b', { text: pp(toPP(pairSum)) })),
-            h('span', null, 'синергии ', h('b', { text: pp(toPP(synSum)) })))),
-        h('p', { class: 'rule', text: 'Победа: шанс твоей команды 50% и выше. Драфт сдвигает шансы, а не решает игру.' })),
-      h('div', { class: 'draft compact' },
-        finalTeam('Ты', st.me.picks, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot.picks, 'enemy')),
+      h('div', { class: 'cm-final' },
+        h('div', { class: 'est-label', text: 'Шанс твоего драфта' }),
+        h('div', { class: 'est-p huge' }, h('b', { class: 'countup', 'data-to': pctNow, text: pctNow + '%' })),
+        rangeNote(ds, est.p)),
+      outcome({ win, bestLine: 'Пики по правилу раунда: ' + pickWins + ' из ' + st.log.length + ' в плюс.', why,
+        rule: 'Правило: ПОБЕДА, если шанс твоего драфта 50% или больше. Каждый пик в списке ниже: по правилу раунда (50% или не дальше 3% от лучшего на эту позицию).' }),
+      h('div', { class: 'draft compact' }, finalTeam('Ты', st.me, 'ally'), h('div', { class: 'draft-vs', text: 'VS' }), finalTeam('Бот', st.bot, 'enemy')),
       h('div', { class: 'next-wrap' }, again),
-      h('section', { class: 'panel' }, h('h3', { text: 'Твои пики против лучших в тот момент' }),
-        h('div', { class: 'pick-log' }, st.log.map((l, i) => {
-          const gap = Math.max(0, (l.bestEst.p - l.est.p) * 100);
-          const same = l.id === l.bestId;
-          return h('div', { class: 'log-row' + (same ? ' best' : gap <= 1 ? ' near' : ' off') },
-            h('span', { class: 'log-n', text: String(i + 1) }),
-            portrait(ds.hero(l.id), 'xs'),
-            h('span', { class: 'log-name' }, ds.hero(l.id).name, h('small', { text: ' ' + pct(l.est.p) }), rangeNote(ds, l.est.p, true)),
-            same ? h('span', { class: 'log-best', text: 'лучший' })
-              : h('span', { class: 'log-best' }, 'лучше: ', h('b', { text: ds.hero(l.bestId).name }), ' ' + pct(l.bestEst.p) + ', -' + gap.toFixed(1).replace('.', ',') + ' п.п.', rangeNote(ds, l.bestEst.p, true)));
-        })),
-        h('p', { class: 'muted small', text: 'Оценка на момент пика, по героям, уже выбранным к этому шагу. Будущие пики модель не знает.' })),
+      h('section', { class: 'panel' }, h('h3', { text: 'Твои пики' }),
+        h('div', { class: 'pick-log' }, st.log.map((l, i) => h('div', { class: 'log-row ' + (l.j.win ? 'w' : 'l') },
+          h('span', { class: 'log-n', text: String(i + 1) }),
+          portrait(ds.hero(l.id), 'xs'),
+          h('span', { class: 'log-name' }, ds.hero(l.id).name, h('small', { text: ' поз. ' + l.pos + ', ' + pct(l.est.p) }),
+            l.offrole ? h('span', { class: 'offrole-tag', text: 'не твоя позиция' }) : null),
+          h('span', { class: 'log-wl', text: l.j.win ? 'W' : 'L' }),
+          h('span', { class: 'log-best', text: l.id === l.bestId || l.j.nearBest ? 'Лучший пик!' : 'Лучший был ' + ds.hero(l.bestId).name + ': +' + Math.max(1, l.j.gap) + '%' })))),
+        h('p', { class: 'muted small', text: 'Шанс на момент пика, по уже выбранным героям. Будущие пики модель не знает.' })),
       h('section', { class: 'panel why' }, h('h3', { text: 'Ключевые матчапы' }),
-        keyVs.length ? keyVs.map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет матчапов с достаточным числом игр.' })),
-      h('section', { class: 'panel why' }, h('h3', { text: 'Синергии' }),
-        h('p', { class: 'muted small', text: 'Плюс: помогает тебе. Минус: связка бота.' }),
+        keyVs.length ? keyVs.map((t) => pairRow(ds, t)) : h('p', { class: 'muted small', text: 'Нет пар с достаточным числом игр.' })),
+      h('section', { class: 'panel why' }, h('h3', { text: 'Связки' }),
         keyWith.length ? keyWith.map((t) => sideTag(t, pairRow(ds, t))) : h('p', { class: 'muted small', text: 'Нет связок с достаточным числом игр.' })),
       h('section', { class: 'panel' }, h('h3', { text: 'Сила героев в брекете' }),
-        h('div', { class: 'base-grid' }, [...st.me.picks, ...st.bot.picks].map((id) => baseRow(ds, ds.hero(id))))),
-      thin.length ? h('section', { class: 'panel' }, h('details', { class: 'thin-list' },
-        h('summary', { text: 'мало данных: ' + thin.length + ' пар (почти не влияют, не причина вердикта)' }),
-        thin.map((t) => pairRow(ds, t)))) : null,
-      h('section', { class: 'panel' }, h('p', { class: 'muted small', text: 'Интервал учитывает только шум выборки, не ошибку модели. ' + modelNote(ds) + ' Порядок пиков в пабах неизвестен, поэтому эффект "последнего пика" модель не измеряет.' }), provLine(ds)));
+        h('div', { class: 'base-grid' }, [...me, ...bot].map((id) => baseRow(ds, ds.hero(id))))),
+      h('details', { class: 'more' }, h('summary', { text: 'подробнее' }), h('div', { class: 'more-body' },
+        h('p', { text: 'Шанс драфта ' + pctNow + '%, 95% интервал ' + range(est.lo, est.hi) + ' (только шум выборки, не ошибка модели).' }),
+        h('p', { text: 'Вклад: сила героев ' + pp(toPP(sumOf('base'))) + ', матчапы ' + pp(toPP(sumOf('vs'))) + ', связки ' + pp(toPP(sumOf('with'))) + '.' }),
+        keyVs.map((t) => pairRow(ds, t, { detail: true })),
+        thin.length ? h('div', null, h('h4', { text: 'Мало данных: ' + thin.length + ' пар (почти не влияют, не причина вердикта)' }), thin.map((t) => pairRow(ds, t, { detail: true }))) : null,
+        h('p', { class: 'muted small', text: 'Порядок пиков в пабах неизвестен, поэтому эффект "последнего пика" модель не измеряет.' }),
+        provLine(ds))),
+      posNote());
     clear(stage).append(el);
     window.scrollTo({ top: 0 });
     requestAnimationFrame(() => countUp(el));
@@ -199,15 +234,11 @@ export function mount(root, ds) {
 
   function sideTag(t, row) {
     row.classList.add('tagged');
-    row.prepend(h('span', { class: 'side-tag ' + (t.side === 'X' ? 'me' : 'bot'), text: t.side === 'X' ? 'ты' : 'бот' }));
+    row.prepend(h('span', { class: 'side-tag ' + (t.side === 'X' ? 'me' : 'bot'), text: t.side === 'X' ? 'у тебя' : 'у бота' }));
     return row;
   }
 
-  function finalTeam(label, ids, cls) {
-    return h('div', { class: 'team ' + cls }, h('div', { class: 'team-label', text: label }),
-      h('div', { class: 'team-slots' }, ids.map((id) => portrait(ds.hero(id), 'slot'))));
-  }
-
   setup();
-  return () => { if (timer) clearTimeout(timer); };
+  return () => { if (timer) clearTimeout(timer); if (grid) grid.destroy(); };
 }
+
